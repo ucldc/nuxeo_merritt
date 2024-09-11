@@ -70,10 +70,10 @@ class NuxeoMetadataFetcher(object):
         page_prefix = ['r']
 
         # get documents in root folder
-        pages = self.get_pages_of_documents(self.current_folder, page_prefix)
+        self.get_pages_of_documents(self.current_folder, page_prefix)
         
         # get documents in all folders under root
-        #pages.extend(self.folder_traversal(self.current_folder['path'], page_prefix))
+        self.folder_traversal(self.current_folder, page_prefix)
 
         # return something?
 
@@ -83,25 +83,29 @@ class NuxeoMetadataFetcher(object):
         while next_page_available:
             response = self.get_page_of_folders(root_folder, page_index)
             next_page_available = response.json().get('isNextPageAvailable')
+            if not response.json().get('entries', []):
+                next_page_available = False
+                continue
             page_prefix.append(f"fp{page_index}")
 
             for i, folder in enumerate(response.json().get('entries', [])):
                 page_prefix.append(f"f{i}")
+                self.get_pages_of_documents(folder, page_prefix)
                 page_prefix.pop()
 
             page_prefix.pop()
-
             page_index += 1
 
     def get_page_of_folders(self, folder: dict, page_index: int):
         query = (
             "SELECT * FROM Organization "
             f"WHERE ecm:path STARTSWITH '{folder['path']}' "
+            "AND ecm:isVersion = 0 "
             "AND ecm:isTrashed = 0"
         )
 
         request = {
-            'url': f"{NUXEO_API.rtrim('/')}/search/lang/NXQL/execute",
+            'url': f"{NUXEO_API.rstrip('/')}/search/lang/NXQL/execute",
             'headers': nuxeo_request_headers,
             'params': {
                 'pageSize': '100',
@@ -143,16 +147,18 @@ class NuxeoMetadataFetcher(object):
                 s3_key = f"{base_folder.lstrip('/')}/{self.version}/{self.collection_id}/{filename}"
                 load_object_to_s3(storage.bucket, s3_key, jsonl)
             
-            # for record in response.json().get('entries', []):
-            #     self.get_pages_of_component_documents(record)
+            for record in response.json().get('entries', []):
+                self.get_pages_of_component_documents(record)
 
             page_index += 1
 
     def get_page_of_parent_documents(self, folder: dict, page_index: int):
-        query = f"SELECT * FROM SampleCustomPicture, CustomFile, CustomVideo, CustomAudio, CustomThreeD " \
-              f"WHERE ecm:parentId = '{folder['uid']}' AND " \
-              f"ecm:isVersion = 0 AND " \
-              f"ecm:isTrashed = 0 ORDER BY ecm:name"
+        query = (
+            "SELECT * FROM SampleCustomPicture, CustomFile, CustomVideo, CustomAudio, CustomThreeD "
+            f"WHERE ecm:parentId = '{folder['uid']}' AND "
+            "ecm:isVersion = 0 AND "
+            "ecm:isTrashed = 0 ORDER BY ecm:name"
+        )
 
         request = {
             'url': f"{NUXEO_API.rstrip('/')}/search/lang/NXQL/execute",
@@ -183,33 +189,29 @@ class NuxeoMetadataFetcher(object):
                 next_page_available = False
                 continue
 
+            documents = [doc for doc in response.json().get('entries', [])]
+
             storage = parse_data_uri(METADATA)
+            filename = f"{record['uid']}-p{page_index}.jsonl"
+            jsonl = "\n".join([json.dumps(record) for record in documents])
+            jsonl = f"{jsonl}\n"
             if storage.store == 'file':
                 dir = os.path.join(storage.path, self.version, self.collection_id, "children")
-                filename = os.path.join(dir, f"{page_index}.jsonl")
-                jsonl = "\n".join([json.dumps(record) for record in documents])
-                jsonl = f"{jsonl}\n"
                 write_object_to_local(dir, filename, jsonl)
             elif storage.store == 's3':
                 base_folder = storage.path
-                s3_key = f"{base_folder.lstrip('/')}/{self.version}/{self.collection_id}/{page_index}.jsonl"
+                s3_key = f"{base_folder.lstrip('/')}/{self.version}/{self.collection_id}/{filename}"
                 jsonl = "\n".join([json.dumps(record) for record in documents])
                 load_object_to_s3(storage.bucket, s3_key, jsonl)
-
-            put_vernacular_page(
-                response.text,
-                f"children/{record['uid']}-{page_index}",
-                self.vernacular_version
-            )
 
             page_index += 1
 
     def get_page_of_components(self, record: dict, page_index: int):
         query = (
-            "SELECT * FROM SampleCustomPicture, CustomFile, "
-            "CustomVideo, CustomAudio, CustomThreeD "
-            f"WHERE ecm:ancestorId = '{record['uid']}' "
-            "AND ecm:isTrashed = 0 ORDER BY ecm:pos"
+            "SELECT * FROM SampleCustomPicture, CustomFile, CustomVideo, CustomAudio, CustomThreeD "
+            f"WHERE ecm:ancestorId = '{record['uid']}' AND "
+            "ecm:isVersion = 0 AND "
+            "ecm:isTrashed = 0 ORDER BY ecm:name"
         )
 
         request = {
