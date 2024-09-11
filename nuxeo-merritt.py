@@ -14,7 +14,7 @@ import boto3
 REGISTRY_BASE_URL = 'https://registry.cdlib.org'
 NUXEO_TOKEN = os.environ.get('NUXEO_TOKEN')
 NUXEO_API = os.environ.get('NUXEO_API')
-METADATA = os.environ.get('NUXEO_MERRITT_METADATA')
+METADATA_STORE = os.environ.get('NUXEO_MERRITT_METADATA')
 FEEDS = os.environ.get('NUXEO_FEEDS')
 
 nuxeo_request_headers = {
@@ -135,7 +135,7 @@ class NuxeoMetadataFetcher(object):
 
             documents = [doc for doc in response.json().get('entries', [])]
 
-            storage = parse_data_uri(METADATA)
+            storage = parse_data_uri(METADATA_STORE)
             metadata_path = os.path.join(storage.path, self.collection_id, self.version)
             filename = f"{'-'.join(page_prefix)}-p{page_index}.jsonl"
             jsonl = "\n".join([json.dumps(record) for record in documents])
@@ -190,7 +190,7 @@ class NuxeoMetadataFetcher(object):
 
             documents = [doc for doc in response.json().get('entries', [])]
 
-            storage = parse_data_uri(METADATA)
+            storage = parse_data_uri(METADATA_STORE)
             metadata_path = os.path.join(storage.path, self.collection_id, self.version, "children")
             filename = f"{record['uid']}-p{page_index}.jsonl"
             jsonl = "\n".join([json.dumps(record) for record in documents])
@@ -231,7 +231,7 @@ class NuxeoMetadataFetcher(object):
         return response
 
 def collection_has_updates(collection):
-    data = parse_data_uri(METADATA)
+    data = parse_data_uri(METADATA_STORE)
     metadata_path = os.path.join(data.path, collection['collection_id'])
     if data.store == 'file':
         if os.path.exists(metadata_path):
@@ -348,7 +348,7 @@ def get_nuxeo_uid_for_path(path):
 def create_atom_feed(version, collection_id):
     # get metadata from storage
     records = []
-    data = parse_data_uri(METADATA)
+    data = parse_data_uri(METADATA_STORE)
     metadata_path = os.path.join(data.path, collection_id, version)
     if data.store == 'file':
         for file in os.listdir(metadata_path):
@@ -390,7 +390,6 @@ def main(params):
     else:
         collections = [get_registry_collection(params.collection)]
 
-    # fetch metadata to storage if version not provided
     if params.version:
         version = params.version
     else:
