@@ -136,15 +136,14 @@ class NuxeoMetadataFetcher(object):
             documents = [doc for doc in response.json().get('entries', [])]
 
             storage = parse_data_uri(METADATA)
+            metadata_path = os.path.join(storage.path, self.collection_id, self.version)
             filename = f"{'-'.join(page_prefix)}-p{page_index}.jsonl"
             jsonl = "\n".join([json.dumps(record) for record in documents])
             jsonl = f"{jsonl}\n"
             if storage.store == 'file':
-                dir = os.path.join(storage.path, self.version, self.collection_id)
-                write_object_to_local(dir, filename, jsonl)
+                write_object_to_local(metadata_path, filename, jsonl)
             elif storage.store == 's3':
-                base_folder = storage.path
-                s3_key = f"{base_folder.lstrip('/')}/{self.version}/{self.collection_id}/{filename}"
+                s3_key = f"{metadata_path.lstrip('/')}/{filename}"
                 load_object_to_s3(storage.bucket, s3_key, jsonl)
             
             for record in response.json().get('entries', []):
@@ -192,7 +191,7 @@ class NuxeoMetadataFetcher(object):
             documents = [doc for doc in response.json().get('entries', [])]
 
             storage = parse_data_uri(METADATA)
-            metadata_path = os.path.join(storage.path, self.version, self.collection_id, "children")
+            metadata_path = os.path.join(storage.path, self.collection_id, self.version, "children")
             filename = f"{record['uid']}-p{page_index}.jsonl"
             jsonl = "\n".join([json.dumps(record) for record in documents])
             jsonl = f"{jsonl}\n"
@@ -200,7 +199,6 @@ class NuxeoMetadataFetcher(object):
                 write_object_to_local(metadata_path, filename, jsonl)
             elif storage.store == 's3':
                 s3_key = f"{metadata_path.lstrip('/')}/{filename}"
-                jsonl = "\n".join([json.dumps(record) for record in documents])
                 load_object_to_s3(storage.bucket, s3_key, jsonl)
 
             page_index += 1
@@ -232,6 +230,69 @@ class NuxeoMetadataFetcher(object):
         
         return response
 
+def collection_has_updates(collection):
+    data = parse_data_uri(METADATA)
+    metadata_path = os.path.join(data.path, collection['collection_id'])
+    if data.store == 'file':
+        if os.path.exists(metadata_path):
+            versions = [listing for listing in os.listdir(metadata_path)]
+        else:
+            versions = []
+    elif data.store == 's3':
+        s3_client = boto3.client('s3')
+        paginator = s3_client.get_paginator('list_objects_v2')
+        prefix = metadata_path.lstrip('/')
+        pages = paginator.paginate(
+            Bucket=data.bucket,
+            Prefix=prefix
+        )
+        for page in pages:
+            versions = [item['Key'] for item in page['Contents']]
+    else:
+        raise Exception(f"Unknown data scheme: {data.store}")
+
+    has_updates = False
+    if versions:
+        versions.sort()
+        latest_feed_version = versions[-1]
+        latest_nuxeo_update = get_nuxeo_collection_latest_update_date(collection)
+        print(f"{latest_feed_version=} {latest_nuxeo_update=}")
+        if latest_feed_version < latest_nuxeo_update:
+            has_updates = True
+    else:
+        has_updates = True
+
+    return has_updates
+
+def get_nuxeo_collection_latest_update_date(collection):
+    query = (
+            "SELECT * FROM SampleCustomPicture, CustomFile, CustomVideo, CustomAudio, CustomThreeD "
+            f"WHERE ecm:ancestorId = '{collection['uid']}' AND "
+            "ecm:isVersion = 0 AND "
+            "ecm:isTrashed = 0 ORDER BY lastModified desc"
+        )
+
+    request = {
+        'url': f"{NUXEO_API.rstrip('/')}/search/lang/NXQL/execute",
+        'headers': nuxeo_request_headers,
+        'params': {
+            'pageSize': '1',
+            'currentPageIndex': 0,
+            'query': query
+        }
+    }
+
+    try:
+        response = requests.get(**request)
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        print(f"{collection:<6}: error querying Nuxeo: {request}")
+        raise(e)
+
+    documents = [doc for doc in response.json().get('entries', [])]
+    last_modified = documents[0]['lastModified']
+
+    return last_modified
 
 def get_registry_merritt_collections():
     url = f'{REGISTRY_BASE_URL}/api/v1/collection/?harvest_type=NUX&format=json'
@@ -288,7 +349,7 @@ def create_atom_feed(version, collection_id):
     # get metadata from storage
     records = []
     data = parse_data_uri(METADATA)
-    metadata_path = os.path.join(data.path, version, collection_id)
+    metadata_path = os.path.join(data.path, collection_id, version)
     if data.store == 'file':
         for file in os.listdir(metadata_path):
             fullpath = os.path.join(metadata_path, file)
@@ -335,21 +396,27 @@ def main(params):
     else:
         version = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
         for collection in collections:
-            path = collection['nuxeo_path']
-            uid = get_nuxeo_uid_for_path(path)
-            fetcher_payload = {
-                "collection_id": collection['collection_id'],
-                "path": path,
-                "uid": uid,
-                "version": version
-            }
-
-            fetcher = NuxeoMetadataFetcher(fetcher_payload)
-            fetcher.fetch()
+            collection['uid'] = get_nuxeo_uid_for_path(collection['nuxeo_path'])
+            # check to see if any records have been added or updated since last run
+            collection['has_updates'] = collection_has_updates(collection)
+            if collection['has_updates']:
+                # fetch fresh metadata from Nuxeo
+                fetcher_payload = {
+                    "collection_id": collection['collection_id'],
+                    "path": collection['nuxeo_path'],
+                    "uid": collection['uid'],
+                    "version": version
+                }
+                fetcher = NuxeoMetadataFetcher(fetcher_payload)
+                fetcher.fetch()
 
     for collection in collections:
-        # create ATOM feed
-        create_atom_feed(version, collection['collection_id'])
+        if collection['has_updates']:
+            # create ATOM feed
+            print(f"{collection['collection_id']:<6}: creating ATOM feed")
+            #create_atom_feed(version, collection['collection_id'])
+        else:
+            print(f"{collection['collection_id']:<6}: no updates")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create Nuxeo atom feed(s) for Merritt')
