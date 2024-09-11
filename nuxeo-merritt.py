@@ -192,15 +192,14 @@ class NuxeoMetadataFetcher(object):
             documents = [doc for doc in response.json().get('entries', [])]
 
             storage = parse_data_uri(METADATA)
+            metadata_path = os.path.join(storage.path, self.version, self.collection_id, "children")
             filename = f"{record['uid']}-p{page_index}.jsonl"
             jsonl = "\n".join([json.dumps(record) for record in documents])
             jsonl = f"{jsonl}\n"
             if storage.store == 'file':
-                dir = os.path.join(storage.path, self.version, self.collection_id, "children")
-                write_object_to_local(dir, filename, jsonl)
+                write_object_to_local(metadata_path, filename, jsonl)
             elif storage.store == 's3':
-                base_folder = storage.path
-                s3_key = f"{base_folder.lstrip('/')}/{self.version}/{self.collection_id}/{filename}"
+                s3_key = f"{metadata_path.lstrip('/')}/{filename}"
                 jsonl = "\n".join([json.dumps(record) for record in documents])
                 load_object_to_s3(storage.bucket, s3_key, jsonl)
 
@@ -289,34 +288,36 @@ def create_atom_feed(version, collection_id):
     # get metadata from storage
     records = []
     data = parse_data_uri(METADATA)
+    metadata_path = os.path.join(data.path, version, collection_id)
     if data.store == 'file':
-        metadata_dir = os.path.join(data.path, version, collection_id)
-        for file in os.listdir(metadata_dir):
-            with open(os.path.join(metadata_dir, file), "r") as f:
-                records.extend(f.readlines())
+        for file in os.listdir(metadata_path):
+            fullpath = os.path.join(metadata_path, file)
+            if os.path.isfile(fullpath):
+                with open(fullpath, "r") as f:
+                    records.extend(f.readlines())
     elif data.store == 's3':
         s3_client = boto3.client('s3')
         paginator = s3_client.get_paginator('list_objects_v2')
+        prefix = metadata_path.lstrip('/')
         pages = paginator.paginate(
             Bucket=data.bucket,
-            Prefix=version
+            Prefix=prefix
         )
         for page in pages:
             for item in page['Contents']:
-                #print(f"getting s3 object: {item['Key']}")
-                response = s3_client.get_object(
-                    Bucket=data.bucket,
-                    Key=item['Key']
-                )
-                for line in response['Body'].iter_lines():
-                    records.append(line)
+                if not item['Key'].startswith(f'{prefix}/children/'):
+                    #print(f"getting s3 object: {item['Key']}")
+                    response = s3_client.get_object(
+                        Bucket=data.bucket,
+                        Key=item['Key']
+                    )
+                    for line in response['Body'].iter_lines():
+                        records.append(line)
     else:
         raise Exception(f"Unknown data scheme: {data.store}")
-    
-    print(f"{len(records)=}")
-    
-    #for record in records:
 
+    for record in records:
+        pass
     # create feed
 
     # write feed to storage
@@ -328,7 +329,7 @@ def main(params):
     else:
         collections = [get_registry_collection(params.collection)]
 
-    # fetch metadata to storage
+    # fetch metadata to storage if version not provided
     if params.version:
         version = params.version
     else:
@@ -348,8 +349,7 @@ def main(params):
 
     for collection in collections:
         # create ATOM feed
-        #create_atom_feed(version, collection['collection_id'])
-        pass
+        create_atom_feed(version, collection['collection_id'])
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create Nuxeo atom feed(s) for Merritt')
