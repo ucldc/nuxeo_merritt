@@ -348,9 +348,9 @@ def get_nuxeo_uid_for_path(path):
 atom_namespace = "http://www.w3.org/2005/Atom"
 dublin_core_namespace = "http://purl.org/dc/elements/1.1/"
 nuxeo_namespace = "http://www.nuxeo.org/ecm/project/schemas/tingle-california-digita/ucldc_schema"
+opensearch_namespace = "http://a9.com/-/spec/opensearch/1.1/"
 
 def create_atom_feed(version, collection):
-    opensearch_namespace = "http://a9.com/-/spec/opensearch/1.1/"
     namespace_map = {
             None: atom_namespace,
             "nx": nuxeo_namespace,
@@ -360,8 +360,7 @@ def create_atom_feed(version, collection):
     # create XML root
     root = etree.Element(etree.QName(atom_namespace, "feed"), nsmap=namespace_map)
 
-    # add entry for each digital object
-    documents = []
+    # get metadata files from storage and add ATOM feed entry for each digital object
     data = parse_data_uri(METADATA_STORE)
     metadata_path = os.path.join(data.path, collection['collection_id'], version)
     if data.store == 'file':
@@ -369,10 +368,8 @@ def create_atom_feed(version, collection):
             fullpath = os.path.join(metadata_path, file)
             if os.path.isfile(fullpath):
                 with open(fullpath, "r") as f:
-                    #documents.extend(f.readlines())
                     for line in f.readlines():
                         record = json.loads(line)
-                        create_media_json(record)
                         entry = create_record_entry(record)
                         root.insert(0, entry)
     elif data.store == 's3':
@@ -393,7 +390,6 @@ def create_atom_feed(version, collection):
                     )
                     for line in response['Body'].iter_lines():
                         record = json.loads(line)
-                        create_media_json(record)
                         entry = create_record_entry(record)
                         root.insert(0, entry)
     else:
@@ -418,6 +414,28 @@ def create_atom_feed(version, collection):
         load_object_to_s3(storage.bucket, s3_key, feed_string)
 
 def create_record_entry(record):
+    # create ATOM entry for parent object
+    entry = etree.Element(etree.QName(atom_namespace, "entry"))
+    entry = add_fields_to_entry(entry, record)
+
+
+    # atom updated
+    # TODO if complex, we want this to be the lastModified of complex object as a whole
+    # atom_updated = etree.SubElement(entry, etree.QName(atom_namespace, "updated"))
+    # atom_updated.text = record['lastModified']
+
+    # create media json
+    #create_media_json(record)
+    # media json link
+    # if is_parent:
+    #     self._insert_media_json_link(entry, nxid)
+
+    # get components
+
+
+    return entry
+
+def add_fields_to_entry(entry, record):
     # atom id (URI)
     entry = etree.Element(etree.QName(atom_namespace, "entry"))
     atom_id = etree.SubElement(entry, etree.QName(atom_namespace, "id"))
@@ -428,27 +446,83 @@ def create_record_entry(record):
     atom_title = etree.SubElement(entry, etree.QName(atom_namespace, "title"))
     atom_title.text = record["title"]
 
-    # atom updated
-    # TODO
-    # atom_updated = etree.SubElement(entry, etree.QName(atom_namespace, "updated"))
-    # atom_updated.text = record['lastModified']
-
     # atom author
     atom_author = etree.SubElement(entry, etree.QName(atom_namespace, "author"))
     atom_author.text = "UC Libraries Digital Collection"
 
     # metadata file link
-    #self._insert_full_md_link(entry, nxid)
-
-    # media json link
-    # if is_parent:
-    #     self._insert_media_json_link(entry, nxid)
+    parts = urlparse(NUXEO_API)
+    full_metadata_url = f"{parts.scheme}://{parts.netloc}/Merritt/{record['uid']}.xml"
+    etree.SubElement(
+        entry, 
+        etree.QName(atom_namespace, "link"), 
+        rel="alternate", 
+        href=full_metadata_url, 
+        type="application/xml", 
+        title="Full metadata for this object from Nuxeo"
+    )
 
     # main content file link
-    #self._insert_main_content_link(entry, nxid)
+    try:
+        file_content = record['properties']['file:content']
+    except KeyError:
+        raise KeyError("Nuxeo object metadata does not contain 'properties/file:content' element. Make sure 'X-NXDocumentProperties' header includes 'file'")
 
-    # auxiliary file link(s)
-    #self._insert_aux_links(entry, nxid)
+    if file_content:
+        content_file_url = file_content.get('data')
+        content_file_url = content_file_url.replace('/nuxeo/', '/Nuxeo/')
+        checksum = file_content.get('digest')
+        # TODO add content_type
+        main_content_link_element = etree.SubElement(
+            entry,
+            etree.QName(atom_namespace, "link"),
+            rel="alternate",
+            href=content_file_url,
+            title="Main content file"
+        )
+
+        if checksum:
+            checksum_element = etree.SubElement(
+                main_content_link_element,
+                etree.QName(opensearch_namespace, "checksum"),
+                algorithm="MD5"
+            )
+            checksum_element.text = checksum
+
+    # auxiliary files
+    aux_files = []
+    for attachment in record['properties'].get('files:files', []):
+        af = {}
+        attachment_file = attachment.get('file', {})
+        url = attachment_file.get('data')
+        if url:
+            af['url'] = url.replace('/nuxeo/', '/Nuxeo/')
+            af['checksum'] = attachment_file.get('digest')
+            aux_files.append(af)
+
+    for extra_file in record['properties'].get('extra_files:file', []):
+        af = {}
+        extra_file_blob = extra_file.get('blob', {})
+        url = extra_file_blob.get('data')
+        if url:
+            af['url'] = url.replace('/nuxeo/', '/Nuxeo/')
+            af['checksum'] = extra_file_blob.get('digest')
+            aux_files.append(af)
+
+    for af in aux_files:
+        link_aux_file = etree.SubElement(
+            entry,
+            etree.QName(atom_namespace, "link"),
+            rel="alternate",
+            href=af['url'],
+            title="Auxiliary file"
+        )
+        checksum_element = etree.SubElement(
+            link_aux_file,
+            etree.QName(opensearch_namespace, "checksum"),
+            algorithm="MD5"
+        )
+        checksum_element.text = af['checksum']
 
     # dc creator
     for creator in [creator['name'] for creator in record['properties']['ucldc_schema:creator']]:
