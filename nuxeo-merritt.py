@@ -58,6 +58,128 @@ def write_object_to_local(dir, filename, content):
     with open(fullpath, "w") as f:
         f.write(content)
 
+def store_parent_metadata_page(collection_id, version, page_prefix, page_index, records):
+    filename = f"{'-'.join(page_prefix)}-p{page_index}.jsonl"
+    jsonl = "\n".join([json.dumps(record) for record in records])
+    jsonl = f"{jsonl}\n"
+  
+    storage = parse_data_uri(METADATA_STORE)
+    metadata_path = os.path.join(storage.path, collection_id, version)
+    if storage.store == 'file':
+        write_object_to_local(metadata_path, filename, jsonl)
+    elif storage.store == 's3':
+        s3_key = f"{metadata_path.lstrip('/')}/{filename}"
+        load_object_to_s3(storage.bucket, s3_key, jsonl)
+
+def store_component_metadata_page(collection_id, version, parent_uid, page_index, records):
+    filename = f"{parent_uid}-p{page_index}.jsonl"
+    jsonl = "\n".join([json.dumps(record) for record in records])
+    jsonl = f"{jsonl}\n"
+
+    storage = parse_data_uri(METADATA_STORE)
+    metadata_path = os.path.join(storage.path, collection_id, version, "children")
+    if storage.store == 'file':
+        write_object_to_local(metadata_path, filename, jsonl)
+    elif storage.store == 's3':
+        s3_key = f"{metadata_path.lstrip('/')}/{filename}"
+        load_object_to_s3(storage.bucket, s3_key, jsonl)
+
+def get_stored_versions(collection_id):
+    data = parse_data_uri(METADATA_STORE)
+    metadata_path = os.path.join(data.path, collection_id)
+    if data.store == 'file':
+        if os.path.exists(metadata_path):
+            versions = [listing for listing in os.listdir(metadata_path)]
+        else:
+            versions = []
+    elif data.store == 's3':
+        s3_client = boto3.client('s3')
+        paginator = s3_client.get_paginator('list_objects_v2')
+        prefix = metadata_path.lstrip('/')
+        pages = paginator.paginate(
+            Bucket=data.bucket,
+            Prefix=prefix
+        )
+        for page in pages:
+            if page.get('Contents'):
+                versions = [item['Key'] for item in page['Contents']]
+            else:
+                versions = []
+    else:
+        raise Exception(f"Unknown data scheme: {data.store}")
+
+    return versions
+
+def get_parent_metadata_records(collection_id, version):
+    records = []
+    data = parse_data_uri(METADATA_STORE)
+    metadata_path = os.path.join(data.path, collection_id, version)
+    if data.store == 'file':
+        for file in os.listdir(metadata_path):
+            fullpath = os.path.join(metadata_path, file)
+            if os.path.isfile(fullpath):
+                with open(fullpath, "r") as f:
+                    for line in f.readlines():
+                        records.append(line)
+    elif data.store == 's3':
+        s3_client = boto3.client('s3')
+        paginator = s3_client.get_paginator('list_objects_v2')
+        prefix = metadata_path.lstrip('/')
+        pages = paginator.paginate(
+            Bucket=data.bucket,
+            Prefix=prefix
+        )
+        for page in pages:
+            for item in page['Contents']:
+                if not item['Key'].startswith(f'{prefix}/children/'):
+                    #print(f"getting s3 object: {item['Key']}")
+                    response = s3_client.get_object(
+                        Bucket=data.bucket,
+                        Key=item['Key']
+                    )
+                    for line in response['Body'].iter_lines(): 
+                        records.append(line)
+    else:
+        raise Exception(f"Unknown data scheme: {data.store}")
+
+    return records
+
+def get_component_metadata_records(collection_id, version, parent_uid):
+    records = []
+    metadata_storage = parse_data_uri(METADATA_STORE)
+    component_path = os.path.join(metadata_storage.path, collection_id, version, "children")
+    if metadata_storage.store == 'file':
+        for file in os.listdir(component_path):
+            if file.startswith(parent_uid):
+                fullpath = os.path.join(component_path, file)
+                if os.path.isfile(fullpath):
+                    with open(fullpath, "r") as f:
+                        for line in f.readlines():
+                            records.append(line)
+    elif metadata_storage.store == 's3':
+        s3_client = boto3.client('s3')
+        paginator = s3_client.get_paginator('list_objects_v2')
+        prefix = component_path.lstrip('/')
+        pages = paginator.paginate(
+            Bucket=metadata_storage.bucket,
+            Prefix=prefix
+        )
+        for page in pages:
+            for item in page['Contents']:
+                starts_with = f"{metadata_storage.path.lstrip('/')}/{collection_id}/{version}/children/{parent_uid}"
+                print(f"{item['Key']=}")
+                print(f"{starts_with=}")
+                if item['Key'].startswith(starts_with):
+                    #print(f"getting s3 object: {item['Key']}")
+                    response = s3_client.get_object(
+                        Bucket=metadata_storage.bucket,
+                        Key=item['Key']
+                    )
+                    for line in response['Body'].iter_lines():
+                        records.append(line)
+    
+    return records
+
 class NuxeoMetadataFetcher(object):
     def __init__(self, params):
         self.collection_id = params.get('collection_id')
@@ -138,16 +260,8 @@ class NuxeoMetadataFetcher(object):
 
             documents = [doc for doc in response.json().get('entries', [])]
 
-            storage = parse_data_uri(METADATA_STORE)
-            metadata_path = os.path.join(storage.path, self.collection_id, self.version)
-            filename = f"{'-'.join(page_prefix)}-p{page_index}.jsonl"
-            jsonl = "\n".join([json.dumps(record) for record in documents])
-            jsonl = f"{jsonl}\n"
-            if storage.store == 'file':
-                write_object_to_local(metadata_path, filename, jsonl)
-            elif storage.store == 's3':
-                s3_key = f"{metadata_path.lstrip('/')}/{filename}"
-                load_object_to_s3(storage.bucket, s3_key, jsonl)
+            # write page of parent metadata to storage
+            store_parent_metadata_page(self.collection_id, self.version, page_prefix, page_index, documents)
             
             for record in response.json().get('entries', []):
                 self.get_pages_of_component_documents(record)
@@ -193,16 +307,7 @@ class NuxeoMetadataFetcher(object):
 
             documents = [doc for doc in response.json().get('entries', [])]
 
-            storage = parse_data_uri(METADATA_STORE)
-            metadata_path = os.path.join(storage.path, self.collection_id, self.version, "children")
-            filename = f"{record['uid']}-p{page_index}.jsonl"
-            jsonl = "\n".join([json.dumps(record) for record in documents])
-            jsonl = f"{jsonl}\n"
-            if storage.store == 'file':
-                write_object_to_local(metadata_path, filename, jsonl)
-            elif storage.store == 's3':
-                s3_key = f"{metadata_path.lstrip('/')}/{filename}"
-                load_object_to_s3(storage.bucket, s3_key, jsonl)
+            store_component_metadata_page(self.collection_id, self.version, record['uid'], page_index, documents)
 
             page_index += 1
 
@@ -235,25 +340,7 @@ class NuxeoMetadataFetcher(object):
         return response
 
 def collection_has_updates(collection):
-    data = parse_data_uri(METADATA_STORE)
-    metadata_path = os.path.join(data.path, collection['collection_id'])
-    if data.store == 'file':
-        if os.path.exists(metadata_path):
-            versions = [listing for listing in os.listdir(metadata_path)]
-        else:
-            versions = []
-    elif data.store == 's3':
-        s3_client = boto3.client('s3')
-        paginator = s3_client.get_paginator('list_objects_v2')
-        prefix = metadata_path.lstrip('/')
-        pages = paginator.paginate(
-            Bucket=data.bucket,
-            Prefix=prefix
-        )
-        for page in pages:
-            versions = [item['Key'] for item in page['Contents']]
-    else:
-        raise Exception(f"Unknown data scheme: {data.store}")
+    versions = get_stored_versions(collection['collection_id'])
 
     has_updates = False
     if versions:
@@ -365,39 +452,10 @@ def create_atom_feed(version, collection):
     root = etree.Element(etree.QName(atom_namespace, "feed"), nsmap=namespace_map)
 
     # add entry for each digital object
-    data = parse_data_uri(METADATA_STORE)
-    metadata_path = os.path.join(data.path, collection['collection_id'], version)
-    if data.store == 'file':
-        for file in os.listdir(metadata_path):
-            fullpath = os.path.join(metadata_path, file)
-            if os.path.isfile(fullpath):
-                with open(fullpath, "r") as f:
-                    for line in f.readlines():
-                        record = json.loads(line)
-                        entry = create_record_entry(record, collection, version)
-                        root.insert(0, entry)
-    elif data.store == 's3':
-        s3_client = boto3.client('s3')
-        paginator = s3_client.get_paginator('list_objects_v2')
-        prefix = metadata_path.lstrip('/')
-        pages = paginator.paginate(
-            Bucket=data.bucket,
-            Prefix=prefix
-        )
-        for page in pages:
-            for item in page['Contents']:
-                if not item['Key'].startswith(f'{prefix}/children/'):
-                    #print(f"getting s3 object: {item['Key']}")
-                    response = s3_client.get_object(
-                        Bucket=data.bucket,
-                        Key=item['Key']
-                    )
-                    for line in response['Body'].iter_lines():
-                        record = json.loads(line)
-                        entry = create_record_entry(record, collection, version)
-                        root.insert(0, entry)
-    else:
-        raise Exception(f"Unknown data scheme: {data.store}")
+    for record in get_parent_metadata_records(collection['collection_id'], version):
+        record = json.loads(record)
+        entry = create_record_entry(record, collection, version)
+        root.insert(0, entry)
 
     # merritt ID
     merritt_id = etree.Element(etree.QName(atom_namespace, "merritt_collection_id"))
@@ -472,39 +530,12 @@ def create_record_entry(record, collection, version):
 
     # get components and the date they were last updated
     #struct_map = [] # list of dicts
-    metadata_storage = parse_data_uri(METADATA_STORE)
-    component_path = os.path.join(metadata_storage.path, collection['collection_id'], version, "children")
-    if metadata_storage.store == 'file':
-        for file in os.listdir(component_path):
-            fullpath = os.path.join(component_path, file)
-            if os.path.isfile(fullpath):
-                with open(fullpath, "r") as f:
-                    for line in f.readlines():
-                        component = json.loads(line)
-                        add_file_links_to_entry(entry, component)
-                        if dateutil_parse(component['lastModified']) > dateutil_parse(record['lastModified']):
-                            object_last_modified = component['lastModified']
-    elif metadata_storage.store == 's3':
-        s3_client = boto3.client('s3')
-        paginator = s3_client.get_paginator('list_objects_v2')
-        prefix = component_path.lstrip('/')
-        pages = paginator.paginate(
-            Bucket=metadata_storage.bucket,
-            Prefix=prefix
-        )
-        for page in pages:
-            for item in page['Contents']:
-                if not item['Key'].startswith(f'{prefix}/children/'):
-                    #print(f"getting s3 object: {item['Key']}")
-                    response = s3_client.get_object(
-                        Bucket=metadata_storage.bucket,
-                        Key=item['Key']
-                    )
-                    for line in response['Body'].iter_lines():
-                        component = json.loads(line)
-                        add_file_links_to_entry(entry, component)
-                        if dateutil_parse(component['lastModified']) > dateutil_parse(record['lastModified']):
-                            object_last_modified = component['lastModified']
+    components = get_component_metadata_records(collection['collection_id'], version, record['uid'])
+    for component in components:
+        component = json.loads(component)
+        add_file_links_to_entry(entry, component)
+        if dateutil_parse(component['lastModified']) > dateutil_parse(record['lastModified']):
+            object_last_modified = component['lastModified']
 
     # object last updated
     # if complex, we want this to be the lastModified of complex object as a whole
