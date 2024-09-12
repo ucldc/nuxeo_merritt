@@ -1,6 +1,7 @@
 import argparse
 from collections import namedtuple
 from datetime import datetime
+from dateutil.parser import parse as dateutil_parse
 import json
 import math
 import os
@@ -304,12 +305,7 @@ def get_registry_merritt_collections():
         response = response.json()
         for collection in response['objects']:
             if collection['merritt_extra_data'] and collection['merritt_id']:
-                collection_id = collection['resource_uri'].split('/')[-2]
-                merritt_collections.append = {
-                    'collection_id': collection_id,
-                    'nuxeo_path': collection['merritt_extra_data'],
-                    'merritt_id': collection['merritt_id']
-                }
+                merritt_collections.append(get_collection_data(collection))
 
         next = response['meta']['next']
         if not next:
@@ -325,13 +321,19 @@ def get_registry_collection(collection_id):
     response.raise_for_status()
     response = response.json()
     if response['merritt_extra_data'] and response['merritt_id']:
-        return {
-            'collection_id': collection_id,
-            'nuxeo_path': response['merritt_extra_data'],
-            'merritt_id': response['merritt_id']
-        }
+        return get_collection_data(response)
     else:
         raise Exception(f"Collection `{collection_id}` is not set up for Merritt.")
+
+def get_collection_data(registry_collection):
+    collection_id = registry_collection['resource_uri'].split('/')[-2]
+    return {
+        'collection_id': collection_id,
+        'nuxeo_path': registry_collection['merritt_extra_data'],
+        'merritt_id': registry_collection['merritt_id'],
+        'name': registry_collection['name'],
+        'url': registry_collection['url_local']        
+    }
 
 def get_nuxeo_uid_for_path(path):
     escaped_path = quote(path, safe=' /')
@@ -351,16 +353,16 @@ nuxeo_namespace = "http://www.nuxeo.org/ecm/project/schemas/tingle-california-di
 opensearch_namespace = "http://a9.com/-/spec/opensearch/1.1/"
 
 def create_atom_feed(version, collection):
-    namespace_map = {
-            None: atom_namespace,
-            "nx": nuxeo_namespace,
-            "dc": dublin_core_namespace,
-            "opensearch": opensearch_namespace}
-    
     # create XML root
+    namespace_map = {
+        None: atom_namespace,
+        "nx": nuxeo_namespace,
+        "dc": dublin_core_namespace,
+        "opensearch": opensearch_namespace
+    }
     root = etree.Element(etree.QName(atom_namespace, "feed"), nsmap=namespace_map)
 
-    # get metadata files from storage and add ATOM feed entry for each digital object
+    # add entry for each digital object
     data = parse_data_uri(METADATA_STORE)
     metadata_path = os.path.join(data.path, collection['collection_id'], version)
     if data.store == 'file':
@@ -370,7 +372,7 @@ def create_atom_feed(version, collection):
                 with open(fullpath, "r") as f:
                     for line in f.readlines():
                         record = json.loads(line)
-                        entry = create_record_entry(record)
+                        entry = create_record_entry(record, collection, version)
                         root.insert(0, entry)
     elif data.store == 's3':
         s3_client = boto3.client('s3')
@@ -390,21 +392,58 @@ def create_atom_feed(version, collection):
                     )
                     for line in response['Body'].iter_lines():
                         record = json.loads(line)
-                        entry = create_record_entry(record)
+                        entry = create_record_entry(record, collection, version)
                         root.insert(0, entry)
     else:
         raise Exception(f"Unknown data scheme: {data.store}")
-    
-    # add header info
+
+    # merritt ID
     merritt_id = etree.Element(etree.QName(atom_namespace, "merritt_collection_id"))
     merritt_id.text = collection['merritt_id']
     root.insert(0, merritt_id)
 
-    feed = etree.ElementTree(root)
-    feed_string = etree.tostring(feed, pretty_print=True, encoding='unicode')
+    # paging info. this is just dumb for now.
+    storage = parse_data_uri(FEED_STORE)
+    s3_url = f"https://s3.amazonaws.com/{storage.bucket}/"
+    last_link = etree.Element(etree.QName(atom_namespace, "link"), rel="last", href=s3_url)
+    root.insert(0, last_link)
+    first_link = etree.Element(etree.QName(atom_namespace, "link"), rel="first", href=s3_url)
+    root.insert(0, first_link)
+    self_link = etree.Element(etree.QName(atom_namespace, "link"), rel="self", href=s3_url)
+    root.insert(0, self_link)
+
+    # collection alt link
+    feed_link_alt = etree.Element(
+        etree.QName(atom_namespace, "link"),
+        rel="alternate",
+        href=collection['url'],
+        title=collection['name']
+    )
+    root.insert(0, feed_link_alt)
+
+    # feed author
+    feed_author = etree.Element(etree.QName(atom_namespace, "author"))
+    feed_author.text = "UC Libraries Digital Collection"
+    root.insert(0, feed_author)
+
+    # feed title
+    feed_title = etree.Element(etree.QName(atom_namespace, "title"))
+    feed_title.text = "UCLDC Metadata Feed"
+    root.insert(0, feed_title)
+
+    # feed ID
+    feed_id = etree.Element(etree.QName(atom_namespace, "id"))
+    feed_id.text = s3_url
+    root.insert(0, feed_id)
+
+    # feed updated date/time
+    feed_updated = etree.Element(etree.QName(atom_namespace, "updated"))
+    feed_updated.text = version
+    root.insert(0, feed_updated)
 
     # write feed to storage
-    storage = parse_data_uri(FEED_STORE)
+    feed = etree.ElementTree(root)
+    feed_string = etree.tostring(feed, pretty_print=True, encoding='unicode')
     filepath = os.path.join(storage.path, collection['collection_id'], version)
     filename = f"ucldc_collection_{collection['collection_id']}.atom"
     if storage.store == 'file':
@@ -413,16 +452,11 @@ def create_atom_feed(version, collection):
         s3_key = f"{filepath.lstrip('/')}/{filename}"
         load_object_to_s3(storage.bucket, s3_key, feed_string)
 
-def create_record_entry(record):
+def create_record_entry(record, collection, version):
     # create ATOM entry for parent object
     entry = etree.Element(etree.QName(atom_namespace, "entry"))
-    entry = add_fields_to_entry(entry, record)
-
-
-    # atom updated
-    # TODO if complex, we want this to be the lastModified of complex object as a whole
-    # atom_updated = etree.SubElement(entry, etree.QName(atom_namespace, "updated"))
-    # atom_updated.text = record['lastModified']
+    entry = add_object_metadata_fields_to_entry(entry, record)
+    entry = add_file_links_to_entry(entry, record)
 
     # create media json
     #create_media_json(record)
@@ -430,12 +464,51 @@ def create_record_entry(record):
     # if is_parent:
     #     self._insert_media_json_link(entry, nxid)
 
-    # get components
+    object_last_modified = record['lastModified']
 
+    # get components and the date they were last updated
+    storage = parse_data_uri(METADATA_STORE)
+    component_path = os.path.join(storage.path, collection['collection_id'], version, "children")
+    if storage.store == 'file':
+        for file in os.listdir(component_path):
+            fullpath = os.path.join(component_path, file)
+            if os.path.isfile(fullpath):
+                with open(fullpath, "r") as f:
+                    for line in f.readlines():
+                        component = json.loads(line)
+                        add_file_links_to_entry(entry, component)
+                        if dateutil_parse(component['lastModified']) > dateutil_parse(record['lastModified']):
+                            object_last_modified = component['lastModified']
+    elif storage.store == 's3':
+        s3_client = boto3.client('s3')
+        paginator = s3_client.get_paginator('list_objects_v2')
+        prefix = component_path.lstrip('/')
+        pages = paginator.paginate(
+            Bucket=storage.bucket,
+            Prefix=prefix
+        )
+        for page in pages:
+            for item in page['Contents']:
+                if not item['Key'].startswith(f'{prefix}/children/'):
+                    #print(f"getting s3 object: {item['Key']}")
+                    response = s3_client.get_object(
+                        Bucket=storage.bucket,
+                        Key=item['Key']
+                    )
+                    for line in response['Body'].iter_lines():
+                        component = json.loads(line)
+                        add_file_links_to_entry(entry, component)
+                        if dateutil_parse(component['lastModified']) > dateutil_parse(record['lastModified']):
+                            object_last_modified = component['lastModified']
+
+    # object last updated
+    # if complex, we want this to be the lastModified of complex object as a whole
+    atom_updated = etree.SubElement(entry, etree.QName(atom_namespace, "updated"))
+    atom_updated.text = object_last_modified
 
     return entry
 
-def add_fields_to_entry(entry, record):
+def add_object_metadata_fields_to_entry(entry, record):
     # atom id (URI)
     entry = etree.Element(etree.QName(atom_namespace, "entry"))
     atom_id = etree.SubElement(entry, etree.QName(atom_namespace, "id"))
@@ -450,6 +523,40 @@ def add_fields_to_entry(entry, record):
     atom_author = etree.SubElement(entry, etree.QName(atom_namespace, "author"))
     atom_author.text = "UC Libraries Digital Collection"
 
+    # dc creator
+    for creator in [creator['name'] for creator in record['properties']['ucldc_schema:creator']]:
+        dc_creator = etree.SubElement(entry, etree.QName(dublin_core_namespace, "creator"))
+        dc_creator.text = creator
+    
+    # dc title
+    dc_title = etree.SubElement(entry, etree.QName(dublin_core_namespace, "title"))
+    dc_title.text = record['title']
+
+    # dc date
+    dates = [date['date'] for date in record['properties']['ucldc_schema:date']]
+    if dates:
+        dc_date = etree.SubElement(entry, etree.QName(dublin_core_namespace, "date"))
+        dc_date.text = dates[0]
+
+    # dc identifier (a.k.a. local identifier) - Nuxeo ID
+    nuxeo_identifier = etree.SubElement(entry, etree.QName(dublin_core_namespace, "identifier"))
+    nuxeo_identifier.text = record['uid']
+
+    # UCLDC identifier (a.k.a. local identifier) - ucldc_schema:identifier -- this will be the ARK if we have it
+    identifier = record['properties']['ucldc_schema:identifier']
+    if identifier:
+        ucldc_identifier = etree.SubElement(entry, etree.QName(nuxeo_namespace, "identifier"))
+        ucldc_identifier.text = identifier
+
+    # UCLDC collection identifier
+    collection = record['properties']['ucldc_schema:collection']
+    if collection:
+        ucldc_collection_id = etree.SubElement(entry, etree.QName(nuxeo_namespace, "collection"))
+        ucldc_collection_id.text = collection
+
+    return entry
+
+def add_file_links_to_entry(entry, record):
     # metadata file link
     parts = urlparse(NUXEO_API)
     full_metadata_url = f"{parts.scheme}://{parts.netloc}/Merritt/{record['uid']}.xml"
@@ -462,7 +569,7 @@ def add_fields_to_entry(entry, record):
         title="Full metadata for this object from Nuxeo"
     )
 
-    # main content file link
+    # main content file links
     try:
         file_content = record['properties']['file:content']
     except KeyError:
@@ -489,7 +596,7 @@ def add_fields_to_entry(entry, record):
             )
             checksum_element.text = checksum
 
-    # auxiliary files
+    # auxiliary file links
     aux_files = []
     for attachment in record['properties'].get('files:files', []):
         af = {}
@@ -523,37 +630,6 @@ def add_fields_to_entry(entry, record):
             algorithm="MD5"
         )
         checksum_element.text = af['checksum']
-
-    # dc creator
-    for creator in [creator['name'] for creator in record['properties']['ucldc_schema:creator']]:
-        dc_creator = etree.SubElement(entry, etree.QName(dublin_core_namespace, "creator"))
-        dc_creator.text = creator
-    
-    # dc title
-    dc_title = etree.SubElement(entry, etree.QName(dublin_core_namespace, "title"))
-    dc_title.text = record['title']
-
-    # dc date
-    dates = [date['date'] for date in record['properties']['ucldc_schema:date']]
-    if dates:
-        dc_date = etree.SubElement(entry, etree.QName(dublin_core_namespace, "date"))
-        dc_date.text = dates[0]
-
-    # dc identifier (a.k.a. local identifier) - Nuxeo ID
-    nuxeo_identifier = etree.SubElement(entry, etree.QName(dublin_core_namespace, "identifier"))
-    nuxeo_identifier.text = record['uid']
-
-    # UCLDC identifier (a.k.a. local identifier) - ucldc_schema:identifier -- this will be the ARK if we have it
-    identifier = record['properties']['ucldc_schema:identifier']
-    if identifier:
-        ucldc_identifier = etree.SubElement(entry, etree.QName(nuxeo_namespace, "identifier"))
-        ucldc_identifier.text = identifier
-
-    # UCLDC collection identifier
-    collection = record['properties']['ucldc_schema:collection']
-    if collection:
-        ucldc_collection_id = etree.SubElement(entry, etree.QName(nuxeo_namespace, "collection"))
-        ucldc_collection_id.text = collection
 
     return entry
 
