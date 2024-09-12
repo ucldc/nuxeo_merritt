@@ -4,4 +4,7 @@ dist/
 *.swp
 *.log
 nx_mrt_sample.atom
-feeds/
+output/
+env.local
+.venv
+.python-version
