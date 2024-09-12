@@ -10,12 +10,13 @@ import requests
 from urllib.parse import quote, urlparse
 
 import boto3
+from lxml import etree
 
 REGISTRY_BASE_URL = 'https://registry.cdlib.org'
 NUXEO_TOKEN = os.environ.get('NUXEO_TOKEN')
 NUXEO_API = os.environ.get('NUXEO_API')
 METADATA_STORE = os.environ.get('NUXEO_MERRITT_METADATA')
-FEEDS = os.environ.get('NUXEO_FEEDS')
+FEED_STORE = os.environ.get('NUXEO_FEEDS')
 
 nuxeo_request_headers = {
     "Accept": "application/json",
@@ -256,7 +257,6 @@ def collection_has_updates(collection):
         versions.sort()
         latest_feed_version = versions[-1]
         latest_nuxeo_update = get_nuxeo_collection_latest_update_date(collection)
-        print(f"{latest_feed_version=} {latest_nuxeo_update=}")
         if latest_feed_version < latest_nuxeo_update:
             has_updates = True
     else:
@@ -345,17 +345,36 @@ def get_nuxeo_uid_for_path(path):
 
     return uid
 
-def create_atom_feed(version, collection_id):
-    # get metadata from storage
-    records = []
+atom_namespace = "http://www.w3.org/2005/Atom"
+dublin_core_namespace = "http://purl.org/dc/elements/1.1/"
+nuxeo_namespace = "http://www.nuxeo.org/ecm/project/schemas/tingle-california-digita/ucldc_schema"
+
+def create_atom_feed(version, collection):
+    opensearch_namespace = "http://a9.com/-/spec/opensearch/1.1/"
+    namespace_map = {
+            None: atom_namespace,
+            "nx": nuxeo_namespace,
+            "dc": dublin_core_namespace,
+            "opensearch": opensearch_namespace}
+    
+    # create XML root
+    root = etree.Element(etree.QName(atom_namespace, "feed"), nsmap=namespace_map)
+
+    # add entry for each digital object
+    documents = []
     data = parse_data_uri(METADATA_STORE)
-    metadata_path = os.path.join(data.path, collection_id, version)
+    metadata_path = os.path.join(data.path, collection['collection_id'], version)
     if data.store == 'file':
         for file in os.listdir(metadata_path):
             fullpath = os.path.join(metadata_path, file)
             if os.path.isfile(fullpath):
                 with open(fullpath, "r") as f:
-                    records.extend(f.readlines())
+                    #documents.extend(f.readlines())
+                    for line in f.readlines():
+                        record = json.loads(line)
+                        create_media_json(record)
+                        entry = create_record_entry(record)
+                        root.insert(0, entry)
     elif data.store == 's3':
         s3_client = boto3.client('s3')
         paginator = s3_client.get_paginator('list_objects_v2')
@@ -373,15 +392,99 @@ def create_atom_feed(version, collection_id):
                         Key=item['Key']
                     )
                     for line in response['Body'].iter_lines():
-                        records.append(line)
+                        record = json.loads(line)
+                        create_media_json(record)
+                        entry = create_record_entry(record)
+                        root.insert(0, entry)
     else:
         raise Exception(f"Unknown data scheme: {data.store}")
+    
+    # add header info
+    merritt_id = etree.Element(etree.QName(atom_namespace, "merritt_collection_id"))
+    merritt_id.text = collection['merritt_id']
+    root.insert(0, merritt_id)
 
-    for record in records:
-        pass
-    # create feed
+    feed = etree.ElementTree(root)
+    feed_string = etree.tostring(feed, pretty_print=True, encoding='unicode')
 
     # write feed to storage
+    storage = parse_data_uri(FEED_STORE)
+    filepath = os.path.join(storage.path, collection['collection_id'], version)
+    filename = f"ucldc_collection_{collection['collection_id']}.atom"
+    if storage.store == 'file':
+        write_object_to_local(filepath, filename, feed_string)
+    elif storage.store == 's3':
+        s3_key = f"{filepath.lstrip('/')}/{filename}"
+        load_object_to_s3(storage.bucket, s3_key, feed_string)
+
+def create_record_entry(record):
+    # atom id (URI)
+    entry = etree.Element(etree.QName(atom_namespace, "entry"))
+    atom_id = etree.SubElement(entry, etree.QName(atom_namespace, "id"))
+    parts = urlparse(NUXEO_API)
+    atom_id.text = f"{parts.scheme}://{parts.netloc}/nuxeo/nxdoc/default/{record['uid']}/view_documents"
+
+    # atom title
+    atom_title = etree.SubElement(entry, etree.QName(atom_namespace, "title"))
+    atom_title.text = record["title"]
+
+    # atom updated
+    # TODO
+    # atom_updated = etree.SubElement(entry, etree.QName(atom_namespace, "updated"))
+    # atom_updated.text = record['lastModified']
+
+    # atom author
+    atom_author = etree.SubElement(entry, etree.QName(atom_namespace, "author"))
+    atom_author.text = "UC Libraries Digital Collection"
+
+    # metadata file link
+    #self._insert_full_md_link(entry, nxid)
+
+    # media json link
+    # if is_parent:
+    #     self._insert_media_json_link(entry, nxid)
+
+    # main content file link
+    #self._insert_main_content_link(entry, nxid)
+
+    # auxiliary file link(s)
+    #self._insert_aux_links(entry, nxid)
+
+    # dc creator
+    for creator in [creator['name'] for creator in record['properties']['ucldc_schema:creator']]:
+        dc_creator = etree.SubElement(entry, etree.QName(dublin_core_namespace, "creator"))
+        dc_creator.text = creator
+    
+    # dc title
+    dc_title = etree.SubElement(entry, etree.QName(dublin_core_namespace, "title"))
+    dc_title.text = record['title']
+
+    # dc date
+    dates = [date['date'] for date in record['properties']['ucldc_schema:date']]
+    if dates:
+        dc_date = etree.SubElement(entry, etree.QName(dublin_core_namespace, "date"))
+        dc_date.text = dates[0]
+
+    # dc identifier (a.k.a. local identifier) - Nuxeo ID
+    nuxeo_identifier = etree.SubElement(entry, etree.QName(dublin_core_namespace, "identifier"))
+    nuxeo_identifier.text = record['uid']
+
+    # UCLDC identifier (a.k.a. local identifier) - ucldc_schema:identifier -- this will be the ARK if we have it
+    identifier = record['properties']['ucldc_schema:identifier']
+    if identifier:
+        ucldc_identifier = etree.SubElement(entry, etree.QName(nuxeo_namespace, "identifier"))
+        ucldc_identifier.text = identifier
+
+    # UCLDC collection identifier
+    collection = record['properties']['ucldc_schema:collection']
+    if collection:
+        ucldc_collection_id = etree.SubElement(entry, etree.QName(nuxeo_namespace, "collection"))
+        ucldc_collection_id.text = collection
+
+    return entry
+
+def create_media_json(record):
+    pass
 
 def main(params):
     # get list of collections for which to create ATOM feeds
@@ -392,6 +495,8 @@ def main(params):
 
     if params.version:
         version = params.version
+        for collection in collections:
+            collection['has_updates'] = True
     else:
         version = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
         for collection in collections:
@@ -413,7 +518,7 @@ def main(params):
         if collection['has_updates']:
             # create ATOM feed
             print(f"{collection['collection_id']:<6}: creating ATOM feed")
-            #create_atom_feed(version, collection['collection_id'])
+            create_atom_feed(version, collection)
         else:
             print(f"{collection['collection_id']:<6}: no updates")
 
