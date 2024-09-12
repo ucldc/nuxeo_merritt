@@ -17,7 +17,8 @@ REGISTRY_BASE_URL = 'https://registry.cdlib.org'
 NUXEO_TOKEN = os.environ.get('NUXEO_TOKEN')
 NUXEO_API = os.environ.get('NUXEO_API')
 METADATA_STORE = os.environ.get('NUXEO_MERRITT_METADATA')
-FEED_STORE = os.environ.get('NUXEO_FEEDS')
+MEDIA_JSON_STORE = os.environ.get('NUXEO_MERRITT_MEDIA_JSON')
+FEED_STORE = os.environ.get('NUXEO_MERRITT_FEEDS')
 
 nuxeo_request_headers = {
     "Accept": "application/json",
@@ -210,7 +211,8 @@ class NuxeoMetadataFetcher(object):
             "SELECT * FROM SampleCustomPicture, CustomFile, CustomVideo, CustomAudio, CustomThreeD "
             f"WHERE ecm:ancestorId = '{record['uid']}' AND "
             "ecm:isVersion = 0 AND "
-            "ecm:isTrashed = 0 ORDER BY ecm:name"
+            "ecm:isTrashed = 0 "
+            "ORDER BY ecm:pos"
         )
 
         request = {
@@ -457,19 +459,22 @@ def create_record_entry(record, collection, version):
     entry = etree.Element(etree.QName(atom_namespace, "entry"))
     entry = add_object_metadata_fields_to_entry(entry, record)
     entry = add_file_links_to_entry(entry, record)
-
-    # create media json
-    #create_media_json(record)
-    # media json link
-    # if is_parent:
-    #     self._insert_media_json_link(entry, nxid)
-
+    
     object_last_modified = record['lastModified']
 
+    # media_json = {
+    #     'format': record[''],
+    #     'href': record[''],
+    #     'id': record[''],
+    #     'label': record[''],
+    #     'dimensions': record['']
+    # }
+
     # get components and the date they were last updated
-    storage = parse_data_uri(METADATA_STORE)
-    component_path = os.path.join(storage.path, collection['collection_id'], version, "children")
-    if storage.store == 'file':
+    #struct_map = [] # list of dicts
+    metadata_storage = parse_data_uri(METADATA_STORE)
+    component_path = os.path.join(metadata_storage.path, collection['collection_id'], version, "children")
+    if metadata_storage.store == 'file':
         for file in os.listdir(component_path):
             fullpath = os.path.join(component_path, file)
             if os.path.isfile(fullpath):
@@ -479,12 +484,12 @@ def create_record_entry(record, collection, version):
                         add_file_links_to_entry(entry, component)
                         if dateutil_parse(component['lastModified']) > dateutil_parse(record['lastModified']):
                             object_last_modified = component['lastModified']
-    elif storage.store == 's3':
+    elif metadata_storage.store == 's3':
         s3_client = boto3.client('s3')
         paginator = s3_client.get_paginator('list_objects_v2')
         prefix = component_path.lstrip('/')
         pages = paginator.paginate(
-            Bucket=storage.bucket,
+            Bucket=metadata_storage.bucket,
             Prefix=prefix
         )
         for page in pages:
@@ -492,7 +497,7 @@ def create_record_entry(record, collection, version):
                 if not item['Key'].startswith(f'{prefix}/children/'):
                     #print(f"getting s3 object: {item['Key']}")
                     response = s3_client.get_object(
-                        Bucket=storage.bucket,
+                        Bucket=metadata_storage.bucket,
                         Key=item['Key']
                     )
                     for line in response['Body'].iter_lines():
@@ -505,6 +510,21 @@ def create_record_entry(record, collection, version):
     # if complex, we want this to be the lastModified of complex object as a whole
     atom_updated = etree.SubElement(entry, etree.QName(atom_namespace, "updated"))
     atom_updated.text = object_last_modified
+
+    # create media json if there are updates
+    if object_last_modified > version:
+        create_media_json(record)
+
+    # add media json link to entry
+    media_json_storage = parse_data_uri(MEDIA_JSON_STORE)
+    etree.SubElement(
+        entry,
+        etree.QName(atom_namespace, "link"),
+        rel="alternate",
+        href=f"https://s3.amazonaws.com/{media_json_storage.bucket}{record['uid']}-media.json",
+        type="application/json",
+        title="Structural metadata for this object"
+    )
 
     return entry
 
