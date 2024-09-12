@@ -86,7 +86,23 @@ def store_component_metadata_page(collection_id, version, parent_uid, page_index
         s3_key = f"{metadata_path.lstrip('/')}/{filename}"
         load_object_to_s3(storage.bucket, s3_key, jsonl)
     else:
-        raise Exception(f"Unknown data scheme: {data.store}")
+        raise Exception(f"Unknown data scheme: {storage.store}")
+    
+def store_media_json(collection_id, media_json: dict):
+    filename = f"{media_json['id']}-media.json"
+    content = json.dumps(media_json)
+
+    storage = parse_data_uri(MEDIA_JSON_STORE)
+    media_json_path = os.path.join(storage.path, collection_id)
+    if storage.store == 'file':
+        write_object_to_local(media_json_path, filename, content)
+        return f"file://{media_json_path}/{filename}"
+    elif storage.store == 's3':
+        s3_key = f"{media_json_path.lstrip('/')}/{filename}"
+        load_object_to_s3(storage.bucket, s3_key, content)
+        return f"https://s3.amazonaws.com/{storage.bucket}/{s3_key}"
+    else:
+        raise Exception(f"Unknown data scheme: {storage.store}")
 
 def get_stored_versions(collection_id):
     data = parse_data_uri(METADATA_STORE)
@@ -171,8 +187,6 @@ def get_component_metadata_records(collection_id, version, parent_uid):
         for page in pages:
             for item in page['Contents']:
                 starts_with = f"{data.path.lstrip('/')}/{collection_id}/{version}/children/{parent_uid}"
-                print(f"{item['Key']=}")
-                print(f"{starts_with=}")
                 if item['Key'].startswith(starts_with):
                     #print(f"getting s3 object: {item['Key']}")
                     response = s3_client.get_object(
@@ -526,16 +540,8 @@ def create_record_entry(record, collection, version):
     
     object_last_modified = record['lastModified']
 
-    # media_json = {
-    #     'format': record[''],
-    #     'href': record[''],
-    #     'id': record[''],
-    #     'label': record[''],
-    #     'dimensions': record['']
-    # }
-
     # get components and the date they were last updated
-    #struct_map = [] # list of dicts
+    media_json_struct_map = []
     components = get_component_metadata_records(collection['collection_id'], version, record['uid'])
     for component in components:
         component = json.loads(component)
@@ -543,22 +549,34 @@ def create_record_entry(record, collection, version):
         if dateutil_parse(component['lastModified']) > dateutil_parse(record['lastModified']):
             object_last_modified = component['lastModified']
 
+        parts = urlparse(NUXEO_API)
+        media_json_struct_map.append({
+            'id': component['uid'],
+            'href': f"{parts.scheme}://{parts.netloc}/nuxeo/nxdoc/default/{component['uid']}/view_documents",
+            'title': component['title']
+        })
+
     # object last updated
     # if complex, we want this to be the lastModified of complex object as a whole
     atom_updated = etree.SubElement(entry, etree.QName(atom_namespace, "updated"))
     atom_updated.text = object_last_modified
 
-    # create media json if there are updates
-    if object_last_modified > version:
-        create_media_json(record)
+    # create media json
+    media_json = {
+        'id': record['uid'],
+        'href': f"{parts.scheme}://{parts.netloc}/nuxeo/nxdoc/default/{record['uid']}/view_documents",
+        'title': record['title']
+    }
+    if media_json_struct_map:
+        media_json['structMap'] = media_json_struct_map
+    media_json_uri = store_media_json(collection['collection_id'], media_json)
 
     # add media json link to entry
-    media_json_storage = parse_data_uri(MEDIA_JSON_STORE)
     etree.SubElement(
         entry,
         etree.QName(atom_namespace, "link"),
         rel="alternate",
-        href=f"https://s3.amazonaws.com/{media_json_storage.bucket}{record['uid']}-media.json",
+        href=media_json_uri,
         type="application/json",
         title="Structural metadata for this object"
     )
@@ -690,9 +708,6 @@ def add_file_links_to_entry(entry, record):
 
     return entry
 
-def create_media_json(record):
-    pass
-
 def main(params):
     # get list of collections for which to create ATOM feeds
     if params.all:
@@ -723,8 +738,8 @@ def main(params):
 
     for collection in collections:
         if collection['has_updates']:
-            # create ATOM feed
-            print(f"{collection['collection_id']:<6}: creating ATOM feed")
+            # create ATOM feed and media.json
+            print(f"{collection['collection_id']:<6}: creating ATOM feed and media.json")
             create_atom_feed(version, collection)
         else:
             print(f"{collection['collection_id']:<6}: no updates")
