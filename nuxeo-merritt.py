@@ -70,6 +70,8 @@ def store_parent_metadata_page(collection_id, version, page_prefix, page_index, 
     elif storage.store == 's3':
         s3_key = f"{metadata_path.lstrip('/')}/{filename}"
         load_object_to_s3(storage.bucket, s3_key, jsonl)
+    else:
+        raise Exception(f"Unknown data scheme: {data.store}")
 
 def store_component_metadata_page(collection_id, version, parent_uid, page_index, records):
     filename = f"{parent_uid}-p{page_index}.jsonl"
@@ -83,6 +85,8 @@ def store_component_metadata_page(collection_id, version, parent_uid, page_index
     elif storage.store == 's3':
         s3_key = f"{metadata_path.lstrip('/')}/{filename}"
         load_object_to_s3(storage.bucket, s3_key, jsonl)
+    else:
+        raise Exception(f"Unknown data scheme: {data.store}")
 
 def get_stored_versions(collection_id):
     data = parse_data_uri(METADATA_STORE)
@@ -146,9 +150,9 @@ def get_parent_metadata_records(collection_id, version):
 
 def get_component_metadata_records(collection_id, version, parent_uid):
     records = []
-    metadata_storage = parse_data_uri(METADATA_STORE)
-    component_path = os.path.join(metadata_storage.path, collection_id, version, "children")
-    if metadata_storage.store == 'file':
+    data = parse_data_uri(METADATA_STORE)
+    component_path = os.path.join(data.path, collection_id, version, "children")
+    if data.store == 'file':
         for file in os.listdir(component_path):
             if file.startswith(parent_uid):
                 fullpath = os.path.join(component_path, file)
@@ -156,27 +160,29 @@ def get_component_metadata_records(collection_id, version, parent_uid):
                     with open(fullpath, "r") as f:
                         for line in f.readlines():
                             records.append(line)
-    elif metadata_storage.store == 's3':
+    elif data.store == 's3':
         s3_client = boto3.client('s3')
         paginator = s3_client.get_paginator('list_objects_v2')
         prefix = component_path.lstrip('/')
         pages = paginator.paginate(
-            Bucket=metadata_storage.bucket,
+            Bucket=data.bucket,
             Prefix=prefix
         )
         for page in pages:
             for item in page['Contents']:
-                starts_with = f"{metadata_storage.path.lstrip('/')}/{collection_id}/{version}/children/{parent_uid}"
+                starts_with = f"{data.path.lstrip('/')}/{collection_id}/{version}/children/{parent_uid}"
                 print(f"{item['Key']=}")
                 print(f"{starts_with=}")
                 if item['Key'].startswith(starts_with):
                     #print(f"getting s3 object: {item['Key']}")
                     response = s3_client.get_object(
-                        Bucket=metadata_storage.bucket,
+                        Bucket=data.bucket,
                         Key=item['Key']
                     )
                     for line in response['Body'].iter_lines():
                         records.append(line)
+    else:
+        raise Exception(f"Unknown data scheme: {data.store}")
     
     return records
 
