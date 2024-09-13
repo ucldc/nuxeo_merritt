@@ -5,6 +5,7 @@ from dateutil.parser import parse as dateutil_parse
 import json
 import math
 import os
+import shutil
 import sys
 
 import requests
@@ -199,6 +200,18 @@ def get_component_metadata_records(collection_id, version, parent_uid):
         raise Exception(f"Unknown data scheme: {data.store}")
     
     return records
+
+def delete_old_metadata(collection_id):
+    versions = get_stored_versions(collection_id)
+    if len(versions) > 1:
+        versions.sort()
+        data = parse_data_uri(METADATA_STORE)
+        for version in versions[:-1]:
+            version_path = os.path.join(data.path, collection_id, version)
+            if data.store == 'file':
+                shutil.rmtree(version_path)
+            elif data.store == 's3':
+                pass
 
 class NuxeoMetadataFetcher(object):
     def __init__(self, params):
@@ -524,7 +537,7 @@ def create_atom_feed(version, collection):
     # write feed to storage
     feed = etree.ElementTree(root)
     feed_string = etree.tostring(feed, pretty_print=True, encoding='unicode')
-    filepath = os.path.join(storage.path, collection['collection_id'], version)
+    filepath = storage.path
     filename = f"ucldc_collection_{collection['collection_id']}.atom"
     if storage.store == 'file':
         write_object_to_local(filepath, filename, feed_string)
@@ -723,7 +736,8 @@ def main(params):
         version = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
         for collection in collections:
             collection['uid'] = get_nuxeo_uid_for_path(collection['nuxeo_path'])
-            # check to see if any records have been added or updated since last run
+            # check to see if any records have been added or updated 
+            # since metadata was last fetched
             collection['has_updates'] = collection_has_updates(collection)
             if collection['has_updates']:
                 # fetch fresh metadata from Nuxeo
@@ -741,6 +755,7 @@ def main(params):
             # create ATOM feed and media.json
             print(f"{collection['collection_id']:<6}: creating ATOM feed and media.json")
             create_atom_feed(version, collection)
+            delete_old_metadata(collection['collection_id'])
         else:
             print(f"{collection['collection_id']:<6}: no updates")
 
