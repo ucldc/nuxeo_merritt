@@ -188,8 +188,7 @@ def get_component_metadata_records(collection_id, version, parent_uid):
         )
         for page in pages:
             for item in page['Contents']:
-                starts_with = f"{data.path.lstrip('/')}/{collection_id}/{version}/children/{parent_uid}"
-                if item['Key'].startswith(starts_with):
+                if item['Key'].startswith(f"{prefix}/{parent_uid}"):
                     #print(f"getting s3 object: {item['Key']}")
                     response = s3_client.get_object(
                         Bucket=data.bucket,
@@ -760,6 +759,7 @@ def main(params):
             collection['has_updates'] = collection_has_updates(collection)
             if collection['has_updates']:
                 # fetch fresh metadata from Nuxeo
+                print(f"{collection['collection_id']:<6}: fetching metadata from Nuxeo")
                 fetcher_payload = {
                     "collection_id": collection['collection_id'],
                     "path": collection['nuxeo_path'],
