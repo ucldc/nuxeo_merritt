@@ -8,3 +8,4 @@ output/
 env.local
 .venv
 .python-version
+env.docker

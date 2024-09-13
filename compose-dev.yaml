@@ -1,0 +1,12 @@
+# compose file for dev purposes
+services:
+  nuxeo-merritt:
+    image: nuxeo_merritt/app
+    pull_policy: never
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+      tags:
+        - nuxeo_merritt/app
+    env_file: env.docker
+    command: ["--collection", "30"]
