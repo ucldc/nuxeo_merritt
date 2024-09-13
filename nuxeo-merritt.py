@@ -474,7 +474,10 @@ def get_collection_data(registry_collection):
         'nuxeo_path': registry_collection['merritt_extra_data'],
         'merritt_id': registry_collection['merritt_id'],
         'name': registry_collection['name'],
-        'url': registry_collection['url_local']        
+        'url': os.path.join(
+            NUXEO_API,
+            registry_collection['merritt_extra_data']
+        )
     }
 
 def get_nuxeo_uid_for_path(path):
@@ -619,7 +622,7 @@ def add_object_metadata_fields_to_entry(entry, record):
     entry = etree.Element(etree.QName(atom_namespace, "entry"))
     atom_id = etree.SubElement(entry, etree.QName(atom_namespace, "id"))
     parts = urlparse(NUXEO_API)
-    atom_id.text = f"{parts.scheme}://{parts.netloc}/nuxeo/nxdoc/default/{record['uid']}/view_documents"
+    atom_id.text = f"{parts.scheme}://{parts.netloc}/Nuxeo/nxdoc/default/{record['uid']}/view_documents"
 
     # atom title
     atom_title = etree.SubElement(entry, etree.QName(atom_namespace, "title"))
