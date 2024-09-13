@@ -6,10 +6,10 @@ import json
 import os
 import shutil
 import sys
+from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 import requests
-from urllib.parse import quote, urlparse
 
 import boto3
 from lxml import etree
@@ -123,9 +123,10 @@ def get_stored_versions(collection_id):
             Prefix=prefix,
             Delimiter='/'
         )
+        versions = []
         for page in pages:
             common_prefixes = page.get('CommonPrefixes', [])
-            return [prefix['Prefix'].split('/')[-2] for prefix in common_prefixes]
+            versions.extend([prefix['Prefix'].split('/')[-2] for prefix in common_prefixes])
     else:
         raise Exception(f"Unknown data scheme: {data.store}")
 
