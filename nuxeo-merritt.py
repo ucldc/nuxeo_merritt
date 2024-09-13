@@ -503,10 +503,10 @@ def create_atom_feed(version, collection):
     }
     root = etree.Element(etree.QName(atom_namespace, "feed"), nsmap=namespace_map)
 
-    # add entry for each digital object
+    # add entry and create media.json for each digital object
     for record in get_parent_metadata_records(collection['collection_id'], version):
         record = json.loads(record)
-        entry = create_record_entry(record, collection, version)
+        entry = create_record_entry_and_media_json(record, collection, version)
         root.insert(0, entry)
 
     # merritt ID
@@ -563,7 +563,7 @@ def create_atom_feed(version, collection):
         s3_key = f"{filepath.lstrip('/')}/{feed_filename}"
         load_object_to_s3(storage.bucket, s3_key, feed_string)
 
-def create_record_entry(record, collection, version):
+def create_record_entry_and_media_json(record, collection, version):
     # create ATOM entry for parent object
     entry = etree.Element(etree.QName(atom_namespace, "entry"))
     entry = add_object_metadata_fields_to_entry(entry, record)
