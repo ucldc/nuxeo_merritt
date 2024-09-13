@@ -661,7 +661,7 @@ def add_object_metadata_fields_to_entry(entry, record):
     collection = record['properties']['ucldc_schema:collection']
     if collection:
         ucldc_collection_id = etree.SubElement(entry, etree.QName(nuxeo_namespace, "collection"))
-        ucldc_collection_id.text = collection
+        ucldc_collection_id.text = collection[0]
 
     return entry
 
