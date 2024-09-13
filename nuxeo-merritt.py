@@ -3,10 +3,10 @@ from collections import namedtuple
 from datetime import datetime
 from dateutil.parser import parse as dateutil_parse
 import json
-import math
 import os
 import shutil
 import sys
+from zoneinfo import ZoneInfo
 
 import requests
 from urllib.parse import quote, urlparse
@@ -117,15 +117,15 @@ def get_stored_versions(collection_id):
         s3_client = boto3.client('s3')
         paginator = s3_client.get_paginator('list_objects_v2')
         prefix = metadata_path.lstrip('/')
+        prefix = f"{prefix}/"
         pages = paginator.paginate(
             Bucket=data.bucket,
-            Prefix=prefix
+            Prefix=prefix,
+            Delimiter='/'
         )
         for page in pages:
-            if page.get('Contents'):
-                versions = [item['Key'] for item in page['Contents']]
-            else:
-                versions = []
+            common_prefixes = page.get('CommonPrefixes', [])
+            return [prefix['Prefix'].split('/')[-2] for prefix in common_prefixes]
     else:
         raise Exception(f"Unknown data scheme: {data.store}")
 
@@ -211,7 +211,25 @@ def delete_old_metadata(collection_id):
             if data.store == 'file':
                 shutil.rmtree(version_path)
             elif data.store == 's3':
-                pass
+                s3_client = boto3.client('s3')
+                paginator = s3_client.get_paginator('list_objects_v2')
+                prefix = version_path.lstrip('/')
+                pages = paginator.paginate(
+                    Bucket=data.bucket,
+                    Prefix=prefix
+                )
+                keys_to_delete = [item['Key'] for page in pages for item in page['Contents']]
+                response = s3_client.delete_objects(
+                    Bucket=data.bucket,
+                    Delete={"Objects": [{"Key": key} for key in keys_to_delete]}
+                )
+                if "Deleted" in response:
+                    print(f"Deleted s3://{data.bucket}/{prefix} ({len(response['Deleted'])} objects total)")
+                if "Errors" in response:
+                    raise Exception(
+                        f"Error deleting objects with prefix {prefix} from bucket {data.bucket}"
+                        f"Errors: {response['Errors']}"
+                    )
 
 class NuxeoMetadataFetcher(object):
     def __init__(self, params):
@@ -380,7 +398,7 @@ def collection_has_updates(collection):
         versions.sort()
         latest_feed_version = versions[-1]
         latest_nuxeo_update = get_nuxeo_collection_latest_update_date(collection)
-        if latest_feed_version < latest_nuxeo_update:
+        if dateutil_parse(latest_feed_version) < dateutil_parse(latest_nuxeo_update):
             has_updates = True
     else:
         has_updates = True
@@ -733,7 +751,7 @@ def main(params):
         for collection in collections:
             collection['has_updates'] = True
     else:
-        version = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        version = datetime.now(ZoneInfo("America/Los_Angeles")).strftime('%Y-%m-%dT%H:%M:%S.%Z')
         for collection in collections:
             collection['uid'] = get_nuxeo_uid_for_path(collection['nuxeo_path'])
             # check to see if any records have been added or updated 
