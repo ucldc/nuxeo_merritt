@@ -393,13 +393,14 @@ class NuxeoMetadataFetcher(object):
 def collection_has_updates(collection):
     versions = get_stored_versions(collection['collection_id'])
 
-    has_updates = False
     if versions:
         versions.sort()
         latest_feed_version = versions[-1]
         latest_nuxeo_update = get_nuxeo_collection_latest_update_date(collection)
         if dateutil_parse(latest_feed_version) < dateutil_parse(latest_nuxeo_update):
             has_updates = True
+        else:
+            has_updates = False
     else:
         has_updates = True
 
@@ -410,7 +411,8 @@ def get_nuxeo_collection_latest_update_date(collection):
             "SELECT * FROM SampleCustomPicture, CustomFile, CustomVideo, CustomAudio, CustomThreeD "
             f"WHERE ecm:ancestorId = '{collection['uid']}' AND "
             "ecm:isVersion = 0 AND "
-            "ecm:isTrashed = 0 ORDER BY lastModified desc"
+            "ecm:isTrashed = 0 "
+            "ORDER BY lastModified desc"
         )
 
     request = {
@@ -482,10 +484,7 @@ def get_nuxeo_uid_for_path(path):
     request = {'url': url, 'headers': headers}
     response = requests.get(**request)
     response.raise_for_status()
-    json_response = response.json()
-    uid = json_response['uid']
-
-    return uid
+    return response.json()['uid']
 
 atom_namespace = "http://www.w3.org/2005/Atom"
 dublin_core_namespace = "http://purl.org/dc/elements/1.1/"
@@ -493,6 +492,8 @@ nuxeo_namespace = "http://www.nuxeo.org/ecm/project/schemas/tingle-california-di
 opensearch_namespace = "http://a9.com/-/spec/opensearch/1.1/"
 
 def create_atom_feed(version, collection):
+    feed_filename = f"ucldc_collection_{collection['collection_id']}.atom"
+
     # create XML root
     namespace_map = {
         None: atom_namespace,
@@ -515,7 +516,7 @@ def create_atom_feed(version, collection):
 
     # paging info. this is just dumb for now.
     storage = parse_data_uri(FEED_STORE)
-    s3_url = f"https://s3.amazonaws.com/{storage.bucket}/"
+    s3_url = f"https://s3.amazonaws.com/{storage.bucket}{storage.path}/{feed_filename}"
     last_link = etree.Element(etree.QName(atom_namespace, "link"), rel="last", href=s3_url)
     root.insert(0, last_link)
     first_link = etree.Element(etree.QName(atom_namespace, "link"), rel="first", href=s3_url)
@@ -556,11 +557,10 @@ def create_atom_feed(version, collection):
     feed = etree.ElementTree(root)
     feed_string = etree.tostring(feed, pretty_print=True, encoding='unicode')
     filepath = storage.path
-    filename = f"ucldc_collection_{collection['collection_id']}.atom"
     if storage.store == 'file':
-        write_object_to_local(filepath, filename, feed_string)
+        write_object_to_local(filepath, feed_filename, feed_string)
     elif storage.store == 's3':
-        s3_key = f"{filepath.lstrip('/')}/{filename}"
+        s3_key = f"{filepath.lstrip('/')}/{feed_filename}"
         load_object_to_s3(storage.bucket, s3_key, feed_string)
 
 def create_record_entry(record, collection, version):
