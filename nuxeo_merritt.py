@@ -175,13 +175,14 @@ def get_component_metadata_records(collection_id, version, parent_uid):
     data = parse_data_uri(METADATA_STORE)
     component_path = os.path.join(data.path, collection_id, version, "children")
     if data.store == 'file':
-        for file in os.listdir(component_path):
-            if file.startswith(parent_uid):
-                fullpath = os.path.join(component_path, file)
-                if os.path.isfile(fullpath):
-                    with open(fullpath, "r") as f:
-                        for line in f.readlines():
-                            records.append(line)
+        if os.path.exists(component_path):
+            for file in os.listdir(component_path):
+                if file.startswith(parent_uid):
+                    fullpath = os.path.join(component_path, file)
+                    if os.path.isfile(fullpath):
+                        with open(fullpath, "r") as f:
+                            for line in f.readlines():
+                                records.append(line)
     elif data.store == 's3':
         s3_client = boto3.client('s3')
         paginator = s3_client.get_paginator('list_objects_v2')
@@ -582,6 +583,7 @@ def create_record_entry_and_media_json(record, collection, version):
 
     # get components and the date they were last updated
     media_json_struct_map = []
+    nuxeo_uri_parts = urlparse(NUXEO_API)
     components = get_component_metadata_records(collection['collection_id'], version, record['uid'])
     for component in components:
         component = json.loads(component)
@@ -589,7 +591,6 @@ def create_record_entry_and_media_json(record, collection, version):
         if dateutil_parse(component['lastModified']) > dateutil_parse(record['lastModified']):
             object_last_modified = component['lastModified']
 
-        parts = urlparse(NUXEO_API)
         media_json_struct_map.append({
             'id': component['uid'],
             'href': f"{parts.scheme}://{parts.netloc}/nuxeo/nxdoc/default/{component['uid']}/view_documents",
@@ -604,7 +605,7 @@ def create_record_entry_and_media_json(record, collection, version):
     # create media json
     media_json = {
         'id': record['uid'],
-        'href': f"{parts.scheme}://{parts.netloc}/nuxeo/nxdoc/default/{record['uid']}/view_documents",
+        'href': f"{nuxeo_uri_parts.scheme}://{nuxeo_uri_parts.netloc}/nuxeo/nxdoc/default/{record['uid']}/view_documents",
         'title': record['title']
     }
     if media_json_struct_map:
