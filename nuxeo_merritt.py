@@ -191,7 +191,7 @@ def get_component_metadata_records(collection_id, version, parent_uid):
             Prefix=prefix
         )
         for page in pages:
-            for item in page.get('Contents', [])
+            for item in page.get('Contents', []):
                 if item['Key'].startswith(f"{prefix}/{parent_uid}"):
                     #print(f"getting s3 object: {item['Key']}")
                     response = s3_client.get_object(
