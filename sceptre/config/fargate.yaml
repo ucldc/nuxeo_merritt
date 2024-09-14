@@ -1,0 +1,13 @@
+template:
+  path: fargate.yaml
+  type: file
+parameters:
+  SourceVersion: main
+  EcrRepo: nuxeo-merritt
+  S3Bucket: nuxeo-merritt
+  RegistryUrl: https://registry.cdlib.org
+  NuxeoToken: !environment_variable NUXEO_TOKEN
+  NuxeoApiEndpoint: "https://nuxeo.cdlib.org/nuxeo/site/api/v1"
+  MetadataUri: s3://nuxeo-merritt/metadata
+  MediaJsonUri: s3://nuxeo-merritt/media_json
+  AtomFeedsUri: s3://nuxeo-merritt/atom_feeds
