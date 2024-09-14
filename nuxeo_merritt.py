@@ -40,7 +40,7 @@ def parse_data_uri(data_uri: str):
 
 def load_object_to_s3(bucket, key, content):
     s3_client = boto3.client('s3')
-    print(f"Writing s3://{bucket}/{key}")
+    #print(f"Writing s3://{bucket}/{key}")
     try:
         s3_client.put_object(
             ACL='bucket-owner-full-control',
@@ -55,7 +55,7 @@ def write_object_to_local(dir, filename, content):
         os.makedirs(dir)
 
     fullpath = os.path.join(dir, filename)
-    print(f"Writing file://{fullpath}")
+    #print(f"Writing file://{fullpath}")
     with open(fullpath, "w") as f:
         f.write(content)
 
