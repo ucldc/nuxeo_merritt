@@ -50,6 +50,8 @@ def load_object_to_s3(bucket, key, content):
     except Exception as e:
         print(f"ERROR loading to S3: {e}")
 
+    return f"s3://{bucket}/{key}"
+
 def write_object_to_local(dir, filename, content):
     if not os.path.exists(dir):
         os.makedirs(dir)
@@ -58,6 +60,8 @@ def write_object_to_local(dir, filename, content):
     #print(f"Writing file://{fullpath}")
     with open(fullpath, "w") as f:
         f.write(content)
+
+    return f"file://{fullpath}"
 
 def store_parent_metadata_page(collection_id, version, page_prefix, page_index, records):
     filename = f"{'-'.join(page_prefix)}-p{page_index}.jsonl"
@@ -561,10 +565,12 @@ def create_atom_feed(version, collection):
     feed_string = etree.tostring(feed, pretty_print=True, encoding='unicode')
     filepath = storage.path
     if storage.store == 'file':
-        write_object_to_local(filepath, feed_filename, feed_string)
+        feed_uri = write_object_to_local(filepath, feed_filename, feed_string)
     elif storage.store == 's3':
         s3_key = f"{filepath.lstrip('/')}/{feed_filename}"
-        load_object_to_s3(storage.bucket, s3_key, feed_string)
+        feed_uri = load_object_to_s3(storage.bucket, s3_key, feed_string)
+
+    print(f"{collection['collection_id']:<6}: Done. Feed URI: {feed_uri}")
 
 def create_record_entry_and_media_json(record, collection, version):
     # create ATOM entry for parent object
