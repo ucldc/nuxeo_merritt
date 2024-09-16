@@ -1,4 +1,4 @@
-# ucldc-merritt
+# nuxeo-merritt
 
 Code for pushing Nuxeo content into Merritt.
 
