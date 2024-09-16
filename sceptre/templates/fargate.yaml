@@ -81,7 +81,7 @@ Resources:
       SourceVersion: !Ref SourceVersion
       Source:
         Type: GITHUB
-        Location: https://github.com/ucldc/ucldc-merritt.git
+        Location: https://github.com/ucldc/nuxeo-merritt.git
         # Auth:
         #   Type: OAUTH
         GitCloneDepth: 1
