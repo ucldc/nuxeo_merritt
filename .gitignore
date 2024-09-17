@@ -9,3 +9,4 @@ env.local
 .venv
 .python-version
 env.docker
+startup.sh
