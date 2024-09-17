@@ -1,13 +1,12 @@
 import argparse
 from collections import namedtuple
-from datetime import datetime
+import datetime
 from dateutil.parser import parse as dateutil_parse
 import json
 import os
 import shutil
 import sys
 from urllib.parse import quote, urlparse
-from zoneinfo import ZoneInfo
 
 import requests
 
@@ -593,7 +592,7 @@ def create_record_entry_and_media_json(record, collection, version):
 
         media_json_struct_map.append({
             'id': component['uid'],
-            'href': f"{parts.scheme}://{parts.netloc}/nuxeo/nxdoc/default/{component['uid']}/view_documents",
+            'href': f"{nuxeo_uri_parts.scheme}://{nuxeo_uri_parts.netloc}/nuxeo/nxdoc/default/{component['uid']}/view_documents",
             'title': component['title']
         })
 
@@ -761,7 +760,9 @@ def main(params):
         for collection in collections:
             collection['has_updates'] = True
     else:
-        version = datetime.now(ZoneInfo("America/Los_Angeles")).strftime('%Y-%m-%dT%H:%M:%S.%Z')
+        version = datetime.datetime.now()
+        version = version.replace(tzinfo=datetime.timezone.utc)
+        version = version.isoformat()
         for collection in collections:
             collection['uid'] = get_nuxeo_uid_for_path(collection['nuxeo_path'])
             # check to see if any records have been added or updated 
