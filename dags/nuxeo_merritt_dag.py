@@ -36,7 +36,7 @@ def nuxeo_merritt():
     run_nuxeo_merritt_in_ecs_task = (
         NuxeoMerrittOperator
             .partial(
-                task_id="nuxeo_merritt"
+                task_id="create_feeds"
             )
             .expand(
                 collection_id=collection_ids
