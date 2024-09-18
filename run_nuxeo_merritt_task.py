@@ -61,8 +61,39 @@ def main(args):
         enableExecuteCommand=True
     )
     task_arn = [task['taskArn'] for task in response['tasks']][0]
-    
-    print(f"ECS task {task_arn} was started.")
+    waiter = ecs_client.get_waiter('tasks_stopped')
+    print(f"Started task in `{cluster}` cluster: {task_arn}")
+    print(f"Waiting until task has stopped...")
+    try:
+        waiter.wait(
+            cluster = cluster,
+            tasks = [task_arn],
+            WaiterConfig = {
+                'Delay': 10,
+                'MaxAttempts': 120
+            }
+        )
+    except Exception as e:
+        print('Task failed to finish running.', e)
+    else:
+        print('Task finished running.')
+
+    response = ecs_client.describe_tasks(
+        cluster = cluster,
+        tasks = [task_arn],
+        include = ['TAGS']
+    )
+
+    # import pprint
+    # pprint.pp(response)
+    for task in response['tasks']:
+        for container in task['containers']:
+            exit_code = container.get('exitCode')
+            if exit_code != 0:
+                print(f"ERROR: {container['name']} had non-zero exit code: {exit_code}")
+
+    print("View python output in CloudWatch. Log group is named `nuxeo-component-ordering`.")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create Nuxeo atom feed(s) for Merritt')
