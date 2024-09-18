@@ -27,7 +27,7 @@ Resources:
   NuxeoMerrittCodeBuildRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: "nuxeo-merritt-codebuild-role"
+      RoleName: "nuxeo_merritt-codebuild-role"
       Path: "/service-role/"
       AssumeRolePolicyDocument:
         Version: 2012-10-17
@@ -42,7 +42,7 @@ Resources:
   NuxeoMerrittCodeBuildPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      ManagedPolicyName: nuxeo-merritt-codebuild-policy
+      ManagedPolicyName: nuxeo_merritt-codebuild-policy
       Roles: [ !Ref NuxeoMerrittCodeBuildRole ]
       PolicyDocument:
         Version: 2012-10-17
@@ -54,8 +54,8 @@ Resources:
               - logs:CreateLogStream
               - logs:PutLogEvents
             Resource:
-              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:nuxeo-merritt
-              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:nuxeo-merritt:*
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:nuxeo_merritt
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:nuxeo_merritt:*
           - Sid: ECRAccess
             Effect: Allow
             Action:
@@ -75,13 +75,13 @@ Resources:
   NuxeoMerrittCodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: nuxeo-merritt
+      Name: nuxeo_merritt
       Description: Build nuxeo merritt ATOM feed docker image and push to ECR
       ServiceRole: !GetAtt NuxeoMerrittCodeBuildRole.Arn
       SourceVersion: !Ref SourceVersion
       Source:
         Type: GITHUB
-        Location: https://github.com/ucldc/nuxeo-merritt.git
+        Location: https://github.com/ucldc/nuxeo_merritt.git
         # Auth:
         #   Type: OAUTH
         GitCloneDepth: 1
@@ -108,7 +108,7 @@ Resources:
         Type: NO_ARTIFACTS
       LogsConfig:
         CloudWatchLogs:
-          GroupName: nuxeo-merritt
+          GroupName: nuxeo_merritt
           Status: ENABLED
           StreamName: build
   #################################
@@ -117,7 +117,7 @@ Resources:
   NuxeoMerrittECSExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: nuxeo-merritt-ecs-execution-role
+      RoleName: nuxeo_merritt-ecs-execution-role
       Path: "/service-role/"
       AssumeRolePolicyDocument:
         Version: 2012-10-17
@@ -129,7 +129,7 @@ Resources:
   NuxeoMerrittECSExecutionPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      ManagedPolicyName: nuxeo-merritt-ecs-execution-policy
+      ManagedPolicyName: nuxeo_merritt-ecs-execution-policy
       Path: "/"
       Roles: [ !Ref NuxeoMerrittECSExecutionRole ]
       PolicyDocument:
@@ -156,7 +156,7 @@ Resources:
   NuxeoMerrittTaskRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: nuxeo-merritt-task-role
+      RoleName: nuxeo_merritt-task-role
       Path: "/service-role/"
       AssumeRolePolicyDocument:
         Version: 2012-10-17
@@ -179,7 +179,7 @@ Resources:
   NuxeoMerrittTaskPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      ManagedPolicyName: nuxeo-merritt-task-policy
+      ManagedPolicyName: nuxeo_merritt-task-policy
       Path: "/"
       Roles:
         - !Ref NuxeoMerrittTaskRole
@@ -210,7 +210,7 @@ Resources:
   NuxeoMerrittTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: nuxeo-merritt-task-definition
+      Family: nuxeo_merritt-task-definition
       RequiresCompatibilities: 
         - FARGATE
       RuntimePlatform:
@@ -222,13 +222,13 @@ Resources:
       ExecutionRoleArn: !GetAtt NuxeoMerrittECSExecutionRole.Arn
       TaskRoleArn: !GetAtt NuxeoMerrittTaskRole.Arn
       ContainerDefinitions:
-        - Name: nuxeo-merritt
+        - Name: nuxeo_merritt
           Image: !Sub ${AWS::AccountId}.dkr.ecr.us-west-2.amazonaws.com/${EcrRepo}
           LogConfiguration:
             LogDriver: awslogs
             Options:
               awslogs-create-group: true
-              awslogs-group: nuxeo-merritt
+              awslogs-group: nuxeo_merritt
               awslogs-region: us-west-2
               awslogs-stream-prefix: ecs
           Essential: true

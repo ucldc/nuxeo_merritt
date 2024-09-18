@@ -49,13 +49,13 @@ def extract_prefix_from_pages(pages: str):
 
 class NuxeoMerrittEcsOperator(EcsRunTaskOperator):
     def __init__(self, collection_id=None, **kwargs):
-        container_name = "nuxeo-merritt"
+        container_name = "nuxeo_merritt"
 
         args = {
             "cluster": "nuxeo",
             "launch_type": "FARGATE",
             "platform_version": "LATEST",
-            "task_definition": "nuxeo-merritt-task-definition",
+            "task_definition": "nuxeo_merritt-task-definition",
             "overrides": {
                 "containerOverrides": [
                     {
@@ -82,9 +82,9 @@ class NuxeoMerrittEcsOperator(EcsRunTaskOperator):
                         ]
             },
             "region": "us-west-2",
-            "awslogs_group": "nuxeo-merritt",
+            "awslogs_group": "nuxeo_merritt",
             "awslogs_region": "us-west-2",
-            "awslogs_stream_prefix": "ecs/nuxeo-merritt",
+            "awslogs_stream_prefix": "ecs/nuxeo_merritt",
             "reattach": True,
             "number_logs_exception": 100,
             "waiter_delay": 10,
@@ -120,7 +120,7 @@ class NuxeoMerrittDockerOperator(DockerOperator):
             mounts = mounts + [
                 Mount(
                     source=os.environ.get('MOUNT_CODEBASE'),
-                    target="/nuxeo-merritt",
+                    target="/nuxeo_merritt",
                     type="bind"
                 )
             ]
@@ -129,7 +129,7 @@ class NuxeoMerrittDockerOperator(DockerOperator):
 
         container_image = os.environ.get(
             'NUXEO_MERRITT_IMAGE',
-            'public.ecr.aws/b6c7x7s4/nuxeo-merritt'
+            'public.ecr.aws/b6c7x7s4/nuxeo_merritt'
         )
         container_version = os.environ.get(
             'NUXEO_MERRITT_VERSION', 'latest')

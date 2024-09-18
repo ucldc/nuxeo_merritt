@@ -1,6 +1,6 @@
 # compose file for dev purposes
 services:
-  nuxeo-merritt:
+  nuxeo_merritt:
     image: nuxeo_merritt
     pull_policy: never
     build:

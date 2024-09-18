@@ -1,6 +1,6 @@
 FROM public.ecr.aws/docker/library/python:3.9.19
 
-WORKDIR /nuxeo-merritt
+WORKDIR /nuxeo_merritt
 
 COPY --chmod=744 nuxeo_merritt.py .
 COPY requirements.txt .

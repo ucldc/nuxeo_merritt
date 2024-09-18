@@ -28,7 +28,7 @@ def main(args):
                 "base": 1
             },
         ],
-        taskDefinition = "nuxeo-merritt-task-definition",
+        taskDefinition = "nuxeo_merritt-task-definition",
         count = 1,
         networkConfiguration={
             "awsvpcConfiguration": {
@@ -41,7 +41,7 @@ def main(args):
         overrides = {
             "containerOverrides": [
                 {
-                    "name": "nuxeo-merritt",
+                    "name": "nuxeo_merritt",
                     "command": command
                 }
             ]

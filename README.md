@@ -1,4 +1,4 @@
-# nuxeo-merritt
+# nuxeo_merritt
 
 Code for pushing Nuxeo content into Merritt.
 
