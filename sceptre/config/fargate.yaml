@@ -4,7 +4,7 @@ template:
 parameters:
   SourceVersion: main
   EcrRepo: nuxeo/nuxeo_merritt
-  S3Bucket: nuxeo_merritt
+  S3Bucket: pad-nuxeo
   RegistryUrl: https://registry.cdlib.org
   NuxeoToken: !environment_variable NUXEO_TOKEN
   NuxeoApiEndpoint: "https://nuxeo.cdlib.org/nuxeo/site/api/v1"
