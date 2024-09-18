@@ -13,10 +13,15 @@ def main(args):
     if args.version:
         command.extend(["--version", args.version])
 
-    # assume we're running this in the pad-dsc-admin account for now
+    # pad-dsc-admin account
+    # cluster = "nuxeo"
+    # subnets = ["subnet-b07689e9", "subnet-ee63cf99"] # Public subnets in the nuxeo VPC
+    # security_groups = ["sg-51064f34"] # default security group for nuxeo VPC
+
+    # pad-prd-admin account
     cluster = "nuxeo"
-    subnets = ["subnet-b07689e9", "subnet-ee63cf99"] # Public subnets in the nuxeo VPC
-    security_groups = ["sg-51064f34"] # default security group for nuxeo VPC
+    subnets = ["subnet-099bfa1a90f5296f2", "subnet-03516bc69ea5c9775"] # Public subnets in the cdl-dsc-vpc VPC
+    security_groups = ["sg-0093f8807728ca7f1"] # cdl-dsc-vpc-sg security group
     
     ecs_client = boto3.client("ecs")
     response = ecs_client.run_task(
