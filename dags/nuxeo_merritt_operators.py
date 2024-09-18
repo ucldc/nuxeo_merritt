@@ -129,7 +129,7 @@ class NuxeoMerrittDockerOperator(DockerOperator):
 
         container_image = os.environ.get(
             'NUXEO_MERRITT_IMAGE',
-            'public.ecr.aws/b6c7x7s4/nuxeo_merritt'
+            'public.ecr.aws/b6c7x7s4/nuxeo/nuxeo_merritt'
         )
         container_version = os.environ.get(
             'NUXEO_MERRITT_VERSION', 'latest')
