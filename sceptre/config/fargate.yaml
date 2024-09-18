@@ -3,7 +3,7 @@ template:
   type: file
 parameters:
   SourceVersion: main
-  EcrRepo: nuxeo_merritt
+  EcrRepo: nuxeo/nuxeo_merritt
   S3Bucket: nuxeo_merritt
   RegistryUrl: https://registry.cdlib.org
   NuxeoToken: !environment_variable NUXEO_TOKEN

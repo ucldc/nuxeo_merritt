@@ -37,6 +37,13 @@ Resources:
               Service: [ codebuild.amazonaws.com ]
             Action: [ "sts:AssumeRole" ]
   #################################
+  ## ECR Repo
+  #################################
+  NuxeoMerrittEcr:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref EcrRepo
+  #################################
   ## CodeBuild Role & Policy
   #################################
   NuxeoMerrittCodeBuildPolicy:
