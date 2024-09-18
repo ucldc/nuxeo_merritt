@@ -220,7 +220,7 @@ Resources:
       TaskRoleArn: !GetAtt NuxeoMerrittTaskRole.Arn
       ContainerDefinitions:
         - Name: nuxeo_merritt
-          Image: !Sub ${AWS::AccountId}.dkr.ecr.us-west-2.amazonaws.com/${EcrRepo}
+          Image: !Sub public.ecr.aws/b6c7x7s4/${EcrRepo}
           LogConfiguration:
             LogDriver: awslogs
             Options:
