@@ -8,6 +8,6 @@ parameters:
   RegistryUrl: https://registry.cdlib.org
   NuxeoToken: !environment_variable NUXEO_TOKEN
   NuxeoApiEndpoint: "https://nuxeo.cdlib.org/nuxeo/site/api/v1"
-  MetadataUri: s3://nuxeo_merritt/metadata
-  MediaJsonUri: s3://nuxeo_merritt/media_json
-  AtomFeedsUri: s3://nuxeo_merritt/atom_feeds
+  MetadataUri: s3://pad_nuxeo/nuxeo_merritt/metadata
+  MediaJsonUri: s3://pad_nuxeo/nuxeo_merritt/media_json
+  AtomFeedsUri: s3://pad_nuxeo/nuxeo_merritt/atom_feeds
