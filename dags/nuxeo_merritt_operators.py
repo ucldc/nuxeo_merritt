@@ -65,7 +65,21 @@ class NuxeoMerrittEcsOperator(EcsRunTaskOperator):
                             collection_id
                         ]
                     }
-                ]
+                ],
+            "environment": [
+                            {
+                                "name": "AWS_ACCESS_KEY_ID",
+                                "value": os.environ.get("AWS_ACCESS_KEY_ID")
+                            },
+                            {
+                                "name": "AWS_SECRET_ACCESS_KEY",
+                                "value": os.environ.get("AWS_SECRET_ACCESS_KEY")
+                            },
+                            {
+                                "name": "AWS_SESSION_TOKEN",
+                                "value": os.environ.get("AWS_SESSION_TOKEN")
+                            },
+                        ]
             },
             "region": "us-west-2",
             "awslogs_group": "nuxeo-merritt",
@@ -140,6 +154,9 @@ class NuxeoMerrittDockerOperator(DockerOperator):
                 "NUXEO_MERRITT_METADATA": os.environ.get('NUXEO_MERRITT_METADATA'),
                 "NUXEO_MERRITT_MEDIA_JSON": os.environ.get('NUXEO_MERRITT_MEDIA_JSON'),
                 "NUXEO_MERRITT_FEEDS": os.environ.get('NUXEO_MERRITT_FEEDS'),
+                "AWS_ACCESS_KEY_ID": os.environ.get('AWS_ACCESS_KEY_ID'),
+                "AWS_SECRET_ACCESS_KEY": os.environ.get('AWS_SECRET_ACCESS_KEY'),
+                "AWS_SESSION_TOKEN": os.environ.get('AWS_SESSION_TOKEN'),
             },
             "max_active_tis_per_dag": 4
         }
