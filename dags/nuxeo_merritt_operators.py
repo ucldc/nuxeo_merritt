@@ -56,16 +56,12 @@ class NuxeoMerrittEcsOperator(EcsRunTaskOperator):
                         ],
                         "environment": [
                             {
-                                "name": "REGISTRY_BASE_URL",
-                                "value": os.environ.get("REGISTRY_BASE_URL")
+                                "name": "NUXEO_MERRITT_NUXEO_TOKEN",
+                                "value": os.environ.get("NUXEO_MERRITT_NUXEO_TOKEN")
                             },
                             {
-                                "name": "NUXEO_TOKEN",
-                                "value": os.environ.get("NUXEO_TOKEN")
-                            },
-                            {
-                                "name": "NUXEO_API",
-                                "value": os.environ.get("NUXEO_API")
+                                "name": "NUXEO_MERRITT_NUXEO_API",
+                                "value": os.environ.get("NUXEO_MERRITT_NUXEO_API")
                             },
                             {
                                 "name": "NUXEO_MERRITT_METADATA",
@@ -158,9 +154,8 @@ class NuxeoMerrittDockerOperator(DockerOperator):
             "mounts": mounts,
             "mount_tmp_dir": False,
             "environment": {
-                "REGISTRY_BASE_URL": os.environ.get("REGISTRY_BASE_URL"),
-                "NUXEO_TOKEN": os.environ.get("NUXEO_TOKEN"),
-                "NUXEO_API": os.environ.get("NUXEO_API"),
+                "NUXEO_MERRITT_NUXEO_TOKEN": os.environ.get("NUXEO_MERRITT_NUXEO_TOKEN"),
+                "NUXEO_MERRITT_NUXEO_API": os.environ.get("NUXEO_MERRITT_NUXEO_API"),
                 "NUXEO_MERRITT_METADATA": os.environ.get('NUXEO_MERRITT_METADATA'),
                 "NUXEO_MERRITT_MEDIA_JSON": os.environ.get('NUXEO_MERRITT_MEDIA_JSON'),
                 "NUXEO_MERRITT_FEEDS": os.environ.get('NUXEO_MERRITT_FEEDS'),

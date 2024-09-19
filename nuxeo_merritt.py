@@ -14,8 +14,8 @@ import boto3
 from lxml import etree
 
 REGISTRY_BASE_URL = 'https://registry.cdlib.org'
-NUXEO_TOKEN = os.environ.get('NUXEO_TOKEN')
-NUXEO_API = os.environ.get('NUXEO_API')
+NUXEO_TOKEN = os.environ.get('NUXEO_MERRITT_NUXEO_TOKEN')
+NUXEO_API = os.environ.get('NUXEO_MERRITT_NUXEO_API')
 METADATA_STORE = os.environ.get('NUXEO_MERRITT_METADATA')
 MEDIA_JSON_STORE = os.environ.get('NUXEO_MERRITT_MEDIA_JSON')
 FEED_STORE = os.environ.get('NUXEO_MERRITT_FEEDS')

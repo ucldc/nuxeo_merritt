@@ -236,9 +236,9 @@ Resources:
               Value: !Ref MediaJsonUri
             - Name: NUXEO_MERRITT_FEEDS
               Value: !Ref AtomFeedsUri
-            - Name: NUXEO_TOKEN
+            - Name: NUXEO_MERRITT_NUXEO_TOKEN
               Value: !Ref NuxeoToken
-            - Name: NUXEO_API
+            - Name: NUXEO_MERRITT_NUXEO_API
               Value: !Ref NuxeoApiEndpoint
           LinuxParameters:
             InitProcessEnabled: true

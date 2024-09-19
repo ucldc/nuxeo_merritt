@@ -6,8 +6,8 @@ parameters:
   EcrRepo: nuxeo/nuxeo_merritt
   S3Bucket: pad-nuxeo
   RegistryUrl: https://registry.cdlib.org
-  NuxeoToken: !environment_variable NUXEO_TOKEN
-  NuxeoApiEndpoint: "https://nuxeo.cdlib.org/nuxeo/site/api/v1"
+  NuxeoToken: !environment_variable NUXEO_MERRITT_NUXEO_TOKEN
+  NuxeoApiEndpoint: !environment_variable NUXEO_MERRITT_NUXEO_API
   MetadataUri: s3://pad-nuxeo/nuxeo_merritt/metadata
   MediaJsonUri: s3://pad-nuxeo/nuxeo_merritt/media_json
   AtomFeedsUri: s3://pad-nuxeo/nuxeo_merritt/atom_feeds
