@@ -37,16 +37,6 @@ def get_awsvpc_config():
             awsvpcConfig['securityGroups'].append(output['OutputValue'])
     return awsvpcConfig
 
-def extract_prefix_from_pages(pages: str):
-    """
-    determine the common prefix for page filepaths
-    return prefix and list of pages with prefix removed
-    """
-    pages = json.loads(pages)
-    prefix = os.path.commonprefix(pages)
-    pages = [path.removeprefix(prefix) for path in pages]
-    return prefix, json.dumps(pages)
-
 class NuxeoMerrittEcsOperator(EcsRunTaskOperator):
     def __init__(self, collection_id=None, **kwargs):
         container_name = "nuxeo_merritt"
@@ -63,23 +53,35 @@ class NuxeoMerrittEcsOperator(EcsRunTaskOperator):
                         "command": [
                             "--collection",
                             collection_id
+                        ],
+                        "environment": [
+                            {
+                                "name": "REGISTRY_BASE_URL",
+                                "value": os.environ.get("REGISTRY_BASE_URL")
+                            },
+                            {
+                                "name": "NUXEO_TOKEN",
+                                "value": os.environ.get("NUXEO_TOKEN")
+                            },
+                            {
+                                "name": "NUXEO_API",
+                                "value": os.environ.get("NUXEO_API")
+                            },
+                            {
+                                "name": "NUXEO_MERRITT_METADATA",
+                                "value": os.environ.get("NUXEO_MERRITT_METADATA")
+                            },
+                            {
+                                "name": "NUXEO_MERRITT_MEDIA_JSON",
+                                "value": os.environ.get("NUXEO_MERRITT_MEDIA_JSON")
+                            },
+                            {
+                                "name": "NUXEO_MERRITT_FEEDS",
+                                "value": os.environ.get("NUXEO_MERRITT_FEEDS")
+                            },
                         ]
                     }
                 ],
-            "environment": [
-                            {
-                                "name": "AWS_ACCESS_KEY_ID",
-                                "value": os.environ.get("AWS_ACCESS_KEY_ID")
-                            },
-                            {
-                                "name": "AWS_SECRET_ACCESS_KEY",
-                                "value": os.environ.get("AWS_SECRET_ACCESS_KEY")
-                            },
-                            {
-                                "name": "AWS_SESSION_TOKEN",
-                                "value": os.environ.get("AWS_SESSION_TOKEN")
-                            },
-                        ]
             },
             "region": "us-west-2",
             "awslogs_group": "nuxeo_merritt",
