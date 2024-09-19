@@ -10,3 +10,4 @@ env.local
 .python-version
 env.docker
 startup.sh
+.DS_Store
