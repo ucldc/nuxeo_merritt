@@ -79,6 +79,14 @@ class NuxeoMerrittEcsOperator(EcsRunTaskOperator):
                                 "name": "NUXEO_MERRITT_FEEDS",
                                 "value": os.environ.get("NUXEO_MERRITT_FEEDS")
                             },
+                            {
+                                "name": "AWS_RETRY_MODE",
+                                "value": "standard"
+                            },
+                            {
+                                "name": "AWS_MAX_ATTEMPTS",
+                                "value": "10"
+                            }
                         ]
                     }
                 ],
