@@ -166,7 +166,6 @@ class NuxeoMerrittDockerOperator(DockerOperator):
             "max_active_tis_per_dag": 4
         }
         args.update(kwargs)
-        print(f"{args=}")
         super().__init__(**args)
 
     def execute(self, context):

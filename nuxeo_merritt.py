@@ -75,7 +75,7 @@ def store_parent_metadata_page(collection_id, version, page_prefix, page_index, 
         s3_key = f"{metadata_path.lstrip('/')}/{filename}"
         load_object_to_s3(storage.bucket, s3_key, jsonl)
     else:
-        raise Exception(f"Unknown data scheme: {data.store}")
+        raise Exception(f"Unknown data scheme: {storage.store}")
 
 def store_component_metadata_page(collection_id, version, parent_uid, page_index, records):
     filename = f"{parent_uid}-p{page_index}.jsonl"
