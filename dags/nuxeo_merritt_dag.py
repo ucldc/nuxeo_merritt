@@ -1,73 +1,84 @@
 from datetime import datetime
 import json
 import os
+import requests
 import traceback
-import urllib3
 
 from airflow.decorators import dag, task
 from airflow.models.param import Param
 from nuxeo_merritt.dags.nuxeo_merritt_operators import NuxeoMerrittOperator
 import nuxeo_merritt.nuxeo_merritt as create_atom
 
-def send_message_to_slack(context: dict, task_message: dict):
-    base_url = context['conf'].get('webserver', 'BASE_URL')
-    dag_run = context['dag_run']
-    log_message = {
-        'dag_id': dag_run.dag_id,
-        'dag_run_id': dag_run.run_id,
-        'logical_date': dag_run.logical_date.isoformat(),
-        'dag_run_conf': dag_run.conf,
-        'host': base_url
-    }
-    task_instance = context.get('task_instance')
-    if task_instance:
-        log_message.update({
-            'task_id': task_instance.task_id,
-            'try_number': task_instance.prev_attempted_tries,
-            'map_index': task_instance.map_index,
-        })
-    log_message['nuxeo_merritt_message'] = task_message
-    message_body = json.dumps(log_message)
+def send_message_to_slack(context: dict, message: str):
     slack_url = os.environ.get("NUXEO_MERRITT_SLACK_URL")
     data = {
         "channel": "#nuxeo_merritt_log",
         "username": "NuxeoMerritt",
-        "text": message_body
+        "text": message
     }
-    http = urllib3.PoolManager()
-    # resp = http.request(
-    #               "POST",
-    #               slack_url,
-    #               body=json.dumps(data).encode("utf-8")
-    #           )
+    response = requests.post(
+        url = slack_url,
+        data = json.dumps(data).encode("utf-8")
+    )
+    response.raise_for_status()
 
-def notify_nuxeo_merritt_success(context: dict, message: dict):
-    send_message_to_slack(context, {'nuxeo_merritt_success': True})
+def get_dag_run(context):
+    base_url = context['conf'].get('webserver', 'BASE_URL')
+    dag_run = context['dag_run']
+    dag_id = dag_run.dag_id
+    dag_run_id = dag_run.run_id
+    dag_run_info = {
+        'dag_run_permalink': f"{base_url}/dags/{dag_id}/grid?dag_run_id={dag_run_id}"
+    }
+    task_instance = context.get('task_instance')
+    if task_instance:
+        dag_run_info.update({
+            'task_run_permalink': (
+                f"{base_url}/dags/{dag_id}/grid"
+                f"?dag_run_id={dag_run_id}"
+                f"&task_id={task_instance.task_id}"
+                f"&tab=mapped_tasks"
+                f"&map_index={task_instance.map_index}"
+            )
+        })
+
+    return dag_run_info
 
 def notify_nuxeo_merritt_failure(context: dict):
     exception = context['exception']
     tb_as_str_list = traceback.format_exception(
         type(exception), exception, exception.__traceback__)
+    traceback = ''.join(tb_as_str_list)
     exc_as_str_list = traceback.format_exception_only(
         type(exception), exception)
+    exception = '\n'.join(exc_as_str_list)
 
-    message = {
-        'error': True,
-        'exception': '\n'.join(exc_as_str_list),
-        'traceback': ''.join(tb_as_str_list)
-    }
+    dag_run = get_dag_run(context)
+    message = (
+        f":red_circle: Nuxeo Merritt ATOM feed creation failed :red_circle:\n"
+        f"*Airflow DAG Run*: {dag_run['dag_run_permalink']}\n"
+        f"*Airflow Task Run*: {dag_run['task_run_permalink']}\n"
+        f"*Exception*: {exception}\n"
+        f"*Traceback*: {traceback}\n"
+    )
+
     send_message_to_slack(context, message)
 
 def notify_dag_success(context):
-    message = {'dag_complete': True}
+    dag_run = get_dag_run(context)
+    message = (
+        f":large_green_circle: Nuxeo Merritt ATOM feed creation finished :large_green_circle:\n"
+        f"*Airflow DAG Run*: {dag_run['dag_run_permalink']}\n"
+    )
     send_message_to_slack(context, message)
 
 def notify_dag_failure(context):
-    message = {
-        'dag_complete': False,
-        'error': True,
-        'reason': context.get('reason', 'Unknown reason')
-    }
+    dag_run = get_dag_run(context)
+    message = (
+        f":red_circle: Nuxeo Merritt DAG run failed :red_circle:\n"
+        f"*Airflow DAG Run*: {dag_run['dag_run_permalink']}\n"
+        f"*Reason*: {context.get('reason', 'Unknown reason')}\n"
+    )
     send_message_to_slack(context, message)
 
 @task(task_id="get_collection_ids",
@@ -102,13 +113,11 @@ def nuxeo_merritt():
         NuxeoMerrittOperator
             .partial(
                 task_id="create_feeds",
-                on_failure_callback=notify_nuxeo_merritt_failure,
-                on_success_callback=notify_nuxeo_merritt_success
+                on_failure_callback=notify_nuxeo_merritt_failure
             )
             .expand(
                 collection_id=collection_ids
             )
     )
     run_nuxeo_merritt_in_ecs_task.set_upstream(collection_ids)
-    # send a message to SNS with summary
 nuxeo_merritt()
