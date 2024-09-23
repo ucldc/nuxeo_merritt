@@ -22,7 +22,7 @@ def send_message_to_slack(context: dict, message: str):
     )
     response.raise_for_status()
 
-def get_dag_run(context):
+def get_dag_run(context: dict):
     base_url = context['conf'].get('webserver', 'BASE_URL')
     dag_run = context['dag_run']
     dag_id = dag_run.dag_id
@@ -48,18 +48,18 @@ def notify_nuxeo_merritt_failure(context: dict):
     exception = context['exception']
     tb_as_str_list = traceback.format_exception(
         type(exception), exception, exception.__traceback__)
-    traceback = ''.join(tb_as_str_list)
+    traceback_str = ''.join(tb_as_str_list)
     exc_as_str_list = traceback.format_exception_only(
         type(exception), exception)
-    exception = '\n'.join(exc_as_str_list)
+    exception_str = '\n'.join(exc_as_str_list)
 
     dag_run = get_dag_run(context)
     message = (
         f":red_circle: Nuxeo Merritt ATOM feed creation failed :red_circle:\n"
         f"*Airflow DAG Run*: {dag_run['dag_run_permalink']}\n"
         f"*Airflow Task Run*: {dag_run['task_run_permalink']}\n"
-        f"*Exception*: {exception}\n"
-        f"*Traceback*: {traceback}\n"
+        f"*Exception*: {exception_str}\n"
+        f"*Traceback*: {traceback_str}\n"
     )
 
     send_message_to_slack(context, message)
@@ -69,6 +69,7 @@ def notify_dag_success(context):
     message = (
         f":large_green_circle: Nuxeo Merritt ATOM feed creation finished :large_green_circle:\n"
         f"*Airflow DAG Run*: {dag_run['dag_run_permalink']}\n"
+        f"*Feed Location*: {os.environ.get('NUXEO_MERRITT_FEEDS')}"
     )
     send_message_to_slack(context, message)
 
@@ -94,6 +95,7 @@ def get_collection_ids_task(params=None, **context):
 
 @dag(
     dag_id="nuxeo_merritt",
+    #schedule='1 8 * * 6', # Saturdays at 08:01 UTC 
     schedule=None,
     start_date=datetime(2023, 1, 1),
     catchup=False,
