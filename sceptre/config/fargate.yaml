@@ -4,7 +4,8 @@ template:
 parameters:
   SourceVersion: main
   EcrRepo: nuxeo/nuxeo_merritt
-  S3Bucket: pad-nuxeo
+  ApplicationS3Bucket: pad-nuxeo
+  DagsS3Bucket: pad-airflow
   RegistryUrl: https://registry.cdlib.org
   NuxeoToken: !environment_variable NUXEO_MERRITT_NUXEO_TOKEN
   NuxeoApiEndpoint: !environment_variable NUXEO_MERRITT_NUXEO_API

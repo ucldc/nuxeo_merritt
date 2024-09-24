@@ -7,8 +7,11 @@ Parameters:
   EcrRepo:
     Description: ECR repo name
     Type: String
-  S3Bucket:
+  ApplicationS3Bucket:
     Description: S3 bucket in which metadata and reports will be stored
+    Type: String
+  DagsS3Bucket:
+    Description: S3 bucket in which DAGs are stored
     Type: String
   RegistryUrl:
     Description: UCLDC Registry URL
@@ -24,6 +27,9 @@ Parameters:
   AtomFeedsUri:
     Type: String
 Resources:
+  #################################
+  ## CodeBuild Role & Policy
+  #################################
   NuxeoMerrittCodeBuildRole:
     Type: AWS::IAM::Role
     Properties:
@@ -36,9 +42,6 @@ Resources:
             Principal:
               Service: [ codebuild.amazonaws.com ]
             Action: [ "sts:AssumeRole" ]
-  #################################
-  ## CodeBuild Role & Policy
-  #################################
   NuxeoMerrittCodeBuildPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -68,13 +71,25 @@ Resources:
               - sts:GetServiceBearerToken
             Resource: 
               - "*"
-  #################################
-  ## CodeBuild Project
-  #################################
-  NuxeoMerrittCodeBuildProject:
+          - Sid: S3Access
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetObject
+              - s3:PutObject
+              - s3:GetObjectAcl
+              - s3:GetObjectVersion
+              - s3:DeleteObject
+            Resource:
+              - !Sub arn:aws:s3:::${DagsS3Bucket}
+              - !Sub arn:aws:s3:::${DagsS3Bucket}/*
+  #######################################################################
+  ## CodeBuild Project - build nuxeo_merritt Docker image and push to ECR
+  #######################################################################
+  NuxeoMerrittApplicationCodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: nuxeo_merritt
+      Name: nuxeo_merritt-application-deploy
       Description: Build nuxeo merritt ATOM feed docker image and push to ECR
       ServiceRole: !GetAtt NuxeoMerrittCodeBuildRole.Arn
       SourceVersion: !Ref SourceVersion
@@ -96,6 +111,42 @@ Resources:
                 - docker build -f Dockerfile -t ${EcrRepo} .
                 - docker tag ${EcrRepo}:latest public.ecr.aws/b6c7x7s4/${EcrRepo}:latest
                 - docker push public.ecr.aws/b6c7x7s4/${EcrRepo}:latest
+      Environment:
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        PrivilegedMode: true
+      Artifacts:
+        Type: NO_ARTIFACTS
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: nuxeo_merritt
+          Status: ENABLED
+          StreamName: build
+  #######################################################################
+  ## CodeBuild Project - deploy nuxeo_merritt DAGS
+  #######################################################################
+  NuxeoMerrittDagsCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: nuxeo_merritt-dags-deploy
+      Description: Deploy nuxeo_merritt Airflow DAGS
+      ServiceRole: !GetAtt NuxeoMerrittCodeBuildRole.Arn
+      SourceVersion: !Ref SourceVersion
+      Source:
+        Type: GITHUB
+        Location: https://github.com/ucldc/nuxeo_merritt.git
+        # Auth:
+        #   Type: OAUTH
+        GitCloneDepth: 1
+        # For >- and newline handling docs see: https://yaml-multiline.info/
+        BuildSpec: !Sub >-
+          version: 0.2
+
+          phases:
+            build:
+              commands:
+                - aws s3 sync --exclude="*" --include="*.py" --delete . s3://pad-airflow/dags/nuxeo_merritt/
       Environment:
         Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
         Type: LINUX_CONTAINER
@@ -199,8 +250,8 @@ Resources:
               - s3:GetObjectAcl
               - s3:GetObjectVersion
             Resource: 
-              - !Sub arn:aws:s3:::${S3Bucket}
-              - !Sub arn:aws:s3:::${S3Bucket}/*
+              - !Sub arn:aws:s3:::${ApplicationS3Bucket}
+              - !Sub arn:aws:s3:::${ApplicationS3Bucket}/*
   ###############################
   # ECS Task Definition
   ###############################
