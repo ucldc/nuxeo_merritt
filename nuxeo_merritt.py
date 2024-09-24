@@ -442,7 +442,10 @@ def get_latest_metadata_version(collection):
 def metadata_needs_update(collection):
     latest_metadata_version = get_latest_metadata_version(collection)
     latest_nuxeo_update = get_nuxeo_collection_latest_update_date(collection)
-    if dateutil_parse(latest_metadata_version) < dateutil_parse(latest_nuxeo_update):
+
+    if not latest_metadata_version:
+        return True
+    elif dateutil_parse(latest_metadata_version) < dateutil_parse(latest_nuxeo_update):
         return True
     else:
         return False
