@@ -607,7 +607,7 @@ def create_atom_feed(version, collection):
         s3_key = f"{filepath.lstrip('/')}/{feed_filename}"
         feed_uri = load_object_to_s3(storage.bucket, s3_key, feed_string)
 
-    print(f"Collection {collection['collection_id']: DONE. Feed URI: {feed_uri}")
+    print(f"Collection {collection['collection_id']}: DONE. Feed URI: {feed_uri}")
 
 def create_record_entry_and_media_json(record, collection, version):
     # create ATOM entry for parent object
