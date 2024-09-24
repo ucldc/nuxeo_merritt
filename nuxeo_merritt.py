@@ -607,7 +607,7 @@ def create_atom_feed(version, collection):
         s3_key = f"{filepath.lstrip('/')}/{feed_filename}"
         feed_uri = load_object_to_s3(storage.bucket, s3_key, feed_string)
 
-    print(f"{collection['collection_id']:<6}: DONE. Feed URI: {feed_uri}")
+    print(f"Collection {collection['collection_id']: DONE. Feed URI: {feed_uri}")
 
 def create_record_entry_and_media_json(record, collection, version):
     # create ATOM entry for parent object
@@ -752,21 +752,23 @@ def add_file_links_to_entry(entry, record):
     aux_files = []
     for attachment in record['properties'].get('files:files', []):
         af = {}
-        attachment_file = attachment.get('file', {})
-        url = attachment_file.get('data')
-        if url:
-            af['url'] = url.replace('/nuxeo/', '/Nuxeo/')
-            af['checksum'] = attachment_file.get('digest')
-            aux_files.append(af)
+        attachment_file = attachment.get('file')
+        if attachment_file:
+            url = attachment_file.get('data')
+            if url:
+                af['url'] = url.replace('/nuxeo/', '/Nuxeo/')
+                af['checksum'] = attachment_file.get('digest')
+                aux_files.append(af)
 
     for extra_file in record['properties'].get('extra_files:file', []):
         af = {}
-        extra_file_blob = extra_file.get('blob', {})
-        url = extra_file_blob.get('data')
-        if url:
-            af['url'] = url.replace('/nuxeo/', '/Nuxeo/')
-            af['checksum'] = extra_file_blob.get('digest')
-            aux_files.append(af)
+        extra_file_blob = extra_file.get('blob')
+        if extra_file_blob:
+            url = extra_file_blob.get('data')
+            if url:
+                af['url'] = url.replace('/nuxeo/', '/Nuxeo/')
+                af['checksum'] = extra_file_blob.get('digest')
+                aux_files.append(af)
 
     for af in aux_files:
         link_aux_file = etree.SubElement(
@@ -808,7 +810,7 @@ def main(params):
             if collection['metadata_needs_update']:
                 collection['feed_needs_update'] = True
                 # fetch fresh metadata from Nuxeo
-                print(f"{collection['collection_id']:<6}: fetching metadata from Nuxeo at path {collection['nuxeo_path']}")
+                print(f"{collection['collection_id']}: fetching metadata from Nuxeo at path {collection['nuxeo_path']}")
                 fetcher_payload = {
                     "collection_id": collection['collection_id'],
                     "path": collection['nuxeo_path'],
