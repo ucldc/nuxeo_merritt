@@ -108,7 +108,7 @@ def store_media_json(collection_id, media_json: dict):
     else:
         raise Exception(f"Unknown data scheme: {storage.store}")
 
-def get_stored_versions(collection_id):
+def get_stored_metadata_versions(collection_id):
     data = parse_data_uri(METADATA_STORE)
     metadata_path = os.path.join(data.path, collection_id)
     if data.store == 'file':
@@ -140,6 +140,7 @@ def get_parent_metadata_records(collection_id, version):
     data = parse_data_uri(METADATA_STORE)
     metadata_path = os.path.join(data.path, collection_id, version)
     if data.store == 'file':
+        store_uri = f"file://{metadata_path}"
         for file in os.listdir(metadata_path):
             fullpath = os.path.join(metadata_path, file)
             if os.path.isfile(fullpath):
@@ -150,12 +151,13 @@ def get_parent_metadata_records(collection_id, version):
         s3_client = boto3.client('s3')
         paginator = s3_client.get_paginator('list_objects_v2')
         prefix = metadata_path.lstrip('/')
+        store_uri = f"s3://{data.bucket}/{prefix}"
         pages = paginator.paginate(
             Bucket=data.bucket,
             Prefix=prefix
         )
         for page in pages:
-            for item in page['Contents']:
+            for item in page.get('Contents', []):
                 if not item['Key'].startswith(f'{prefix}/children/'):
                     #print(f"getting s3 object: {item['Key']}")
                     response = s3_client.get_object(
@@ -166,6 +168,12 @@ def get_parent_metadata_records(collection_id, version):
                         records.append(line)
     else:
         raise Exception(f"Unknown data scheme: {data.store}")
+
+    if not records:
+        raise Exception(
+            f"No metadata records found for collection {collection_id} "
+            f"at {store_uri}"
+        )
 
     return records
 
@@ -206,7 +214,7 @@ def get_component_metadata_records(collection_id, version, parent_uid):
     return records
 
 def delete_old_metadata(collection_id):
-    versions = get_stored_versions(collection_id)
+    versions = get_stored_metadata_versions(collection_id)
     if len(versions) > 1:
         versions.sort()
         data = parse_data_uri(METADATA_STORE)
@@ -262,6 +270,7 @@ class NuxeoMetadataFetcher(object):
         next_page_available = True
         while next_page_available:
             response = self.get_page_of_folders(root_folder, page_index)
+
             next_page_available = response.json().get('isNextPageAvailable')
             if not response.json().get('entries', []):
                 next_page_available = False
@@ -279,7 +288,7 @@ class NuxeoMetadataFetcher(object):
     def get_page_of_folders(self, folder: dict, page_index: int):
         query = (
             "SELECT * FROM Organization "
-            f"WHERE ecm:path STARTSWITH '{folder['path']}' "
+            f"WHERE ecm:ancestorId = '{folder['uid']}' "
             "AND ecm:isVersion = 0 "
             "AND ecm:isTrashed = 0"
         )
@@ -394,21 +403,49 @@ class NuxeoMetadataFetcher(object):
         
         return response
 
-def collection_has_updates(collection):
-    versions = get_stored_versions(collection['collection_id'])
+def get_stored_feed_uri(collection_id):
+    data = parse_data_uri(FEED_STORE)
+    feed_path = data.path
+    filename = f"ucldc_collection_{collection_id}.atom"
+    if data.store == 'file':
+        fullpath = os.path.join(feed_path, filename)
+        if os.path.exists(fullpath):
+            feed_storage_uri = fullpath
+        else:
+            feed_storage_uri = None
+    elif data.store == 's3':
+        s3_client = boto3.client('s3')
+        prefix = feed_path.lstrip('/')
+        key = f"{prefix}/{filename}"
+        try:
+            s3_client.get_object(
+                Bucket = data.bucket,
+                Key = key
+            )
+            return f"s3://{data.bucket}/{key}"
+        except s3_client.exceptions.NoSuchKey:
+            feed_storage_uri = None
+    else:
+        raise Exception(f"Unknown data scheme: {data.store}")
+
+    return feed_storage_uri
+
+def get_latest_metadata_version(collection):
+    versions = get_stored_metadata_versions(collection['collection_id'])
 
     if versions:
         versions.sort()
-        latest_feed_version = versions[-1]
-        latest_nuxeo_update = get_nuxeo_collection_latest_update_date(collection)
-        if dateutil_parse(latest_feed_version) < dateutil_parse(latest_nuxeo_update):
-            has_updates = True
-        else:
-            has_updates = False
+        return versions[-1]
     else:
-        has_updates = True
+        return None
 
-    return has_updates
+def metadata_needs_update(collection):
+    latest_metadata_version = get_latest_metadata_version(collection)
+    latest_nuxeo_update = get_nuxeo_collection_latest_update_date(collection)
+    if dateutil_parse(latest_metadata_version) < dateutil_parse(latest_nuxeo_update):
+        return True
+    else:
+        return False
 
 def get_nuxeo_collection_latest_update_date(collection):
     query = (
@@ -570,7 +607,7 @@ def create_atom_feed(version, collection):
         s3_key = f"{filepath.lstrip('/')}/{feed_filename}"
         feed_uri = load_object_to_s3(storage.bucket, s3_key, feed_string)
 
-    print(f"{collection['collection_id']:<6}: Done. Feed URI: {feed_uri}")
+    print(f"{collection['collection_id']:<6}: DONE. Feed URI: {feed_uri}")
 
 def create_record_entry_and_media_json(record, collection, version):
     # create ATOM entry for parent object
@@ -758,7 +795,7 @@ def main(params):
     if params.version:
         version = params.version
         for collection in collections:
-            collection['has_updates'] = True
+            collection['feed_needs_update'] = True
     else:
         version = datetime.datetime.now()
         version = version.replace(tzinfo=datetime.timezone.utc)
@@ -767,10 +804,11 @@ def main(params):
             collection['uid'] = get_nuxeo_uid_for_path(collection['nuxeo_path'])
             # check to see if any records have been added or updated 
             # since metadata was last fetched
-            collection['has_updates'] = collection_has_updates(collection)
-            if collection['has_updates']:
+            collection['metadata_needs_update'] = metadata_needs_update(collection)
+            if collection['metadata_needs_update']:
+                collection['feed_needs_update'] = True
                 # fetch fresh metadata from Nuxeo
-                print(f"{collection['collection_id']:<6}: fetching metadata from Nuxeo")
+                print(f"{collection['collection_id']:<6}: fetching metadata from Nuxeo at path {collection['nuxeo_path']}")
                 fetcher_payload = {
                     "collection_id": collection['collection_id'],
                     "path": collection['nuxeo_path'],
@@ -779,15 +817,22 @@ def main(params):
                 }
                 fetcher = NuxeoMetadataFetcher(fetcher_payload)
                 fetcher.fetch()
+            else:
+                # If feed doesn't exist, create it using latest fetched metadata
+                if get_stored_feed_uri(collection):
+                    collection['feed_needs_update'] = False
+                else:
+                    collection['feed_needs_update'] = True
+                    version = get_latest_metadata_version(collection)
 
     for collection in collections:
-        if collection['has_updates']:
+        if collection['feed_needs_update']:
             # create ATOM feed and media.json
-            print(f"{collection['collection_id']:<6}: creating ATOM feed and media.json")
+            print(f"Collection {collection['collection_id']}: creating ATOM feed and media.json")
             create_atom_feed(version, collection)
             delete_old_metadata(collection['collection_id'])
         else:
-            print(f"{collection['collection_id']:<6}: no updates")
+            print(f"Collection {collection['collection_id']}: NO UPDATES")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create Nuxeo atom feed(s) for Merritt')
