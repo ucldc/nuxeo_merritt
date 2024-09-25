@@ -102,7 +102,7 @@ class NuxeoMerrittEcsOperator(EcsRunTaskOperator):
     def execute(self, context):
         # Operators are instantiated once per scheduler cycle per airflow task
         # using them, regardless of whether or not that airflow task actually
-        # runs. The ContentHarvestEcsOperator is used by ecs_content_harvester
+        # runs. The NuxeoMerrittEcsOperator is used by nuxeo_merritt_dag
         # DAG, regardless of whether or not we have proper credentials to call
         # get_awsvpc_config(). Adding network configuration here in execute
         # rather than in initialization ensures that we only call
