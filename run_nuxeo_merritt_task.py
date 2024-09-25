@@ -92,7 +92,7 @@ def main(args):
             if exit_code != 0:
                 print(f"ERROR: {container['name']} had non-zero exit code: {exit_code}")
 
-    print("View python output in CloudWatch. Log group is named `nuxeo-component-ordering`.")
+    print("View python output in CloudWatch. Log group is named `nuxeo_merritt`.")
 
 
 if __name__ == '__main__':
