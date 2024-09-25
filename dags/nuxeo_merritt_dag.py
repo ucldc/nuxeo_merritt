@@ -95,9 +95,8 @@ def get_collection_ids_task(params=None, **context):
 
 @dag(
     dag_id="nuxeo_merritt",
-    #schedule='1 8 * * 6', # Saturdays at 08:01 UTC 
-    schedule=None,
-    start_date=datetime(2023, 1, 1),
+    schedule='1 8 * * 6', # Saturdays at 08:01 UTC
+    start_date=datetime(2024, 9, 21, 8, 6),
     catchup=False,
     params={
         'collection_id': Param(
