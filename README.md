@@ -63,7 +63,7 @@ docker compose -f compose-dev.yaml build
 Run the docker image:
 
 
-``
+```
 docker compose -f compose-dev.yaml up
 ```
 
