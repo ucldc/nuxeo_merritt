@@ -1,6 +1,6 @@
 # nuxeo_merritt
 
-Code for pushing Nuxeo content into Merritt. The `nuxeo_merritt.py` script creates an ATOM feed for each collection that is set up in the Registry for deposit into Merritt. These ATOM feeds are stored on S3. 
+Code for pushing [Nuxeo](https://nuxeo.cdlib.org) content into [Merritt](https://merritt.cdlib.org/). The `nuxeo_merritt.py` script creates an ATOM feed for each collection that is set up in the [Registry](https://registry.cdlib.org/) for deposit into Merritt. These ATOM feeds are stored on S3.
 
 The feed creation job is launched weekly by Airflow, which runs each feed creation task in parallel on ECS.
 
@@ -33,11 +33,15 @@ Create an `env.local` file and source it. You can copy `env.local.example` and u
 
 To create the ATOM feed for collection 30:
 
-```python nuxeo_merritt.py --collection 30```
+```
+python nuxeo_merritt.py --collection 30
+```
 
 You can alternatively run the feeds for all collections, but be aware that this will take a long time:
 
-```python nuxeo_merritt.py --all```
+```
+python nuxeo_merritt.py --all
+```
 
 ## Docker Development
 
@@ -45,17 +49,23 @@ Create an `env.docker` file. You can copy `env.docker.example` and update the va
 
 Login to ECR public:
 
-```aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws```
+```
+aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+```
 
 Build the docker image:
 
-```docker compose -f compose-dev.yaml build```
+```
+docker compose -f compose-dev.yaml build
+```
 
 
 Run the docker image:
 
 
-```docker compose -f compose-dev.yaml up```
+``
+docker compose -f compose-dev.yaml up
+```
 
 This will run the command defined in `compose-dev.yaml`. Currently this is `["--collection", "30"]`, so the feed for collection 30 will be generated.
 
@@ -69,11 +79,15 @@ AWS provides the [aws-mwaa-local-runner](https://github.com/aws/aws-mwaa-local-r
 
 To set up the airflow dev environment, clone the repo locally:
 
-```git clone git@github.com:ucldc/aws-mwaa-local-runner.git```
+```
+git clone git@github.com:ucldc/aws-mwaa-local-runner.git
+```
 
 Then, copy aws-mwaa-local-runner/docker/.env.example:
 
-```cp aws-mwaa-local-runner/docker/.env.example aws-mwaa-local-runner/docker/.env```
+```
+cp aws-mwaa-local-runner/docker/.env.example aws-mwaa-local-runner/docker/.env
+```
 
 If you have not already, you should also clone the `nuxeo_merritt` repo locally.
 
@@ -141,7 +155,7 @@ For more information on `mwaa-local-env`, look for instructions in the [ucldc/aw
 
 ## Infrastructure-as-Code Development
 
-The AWS infrastructure needed to run the nuxeo_merritt code in Fargate can be found in the `sceptre/` directory. See the [sceptre documentation](https://docs.sceptre-project.org/latest/) for information on how to install and use sceptre.
+The AWS infrastructure needed to run the nuxeo_merritt code in Fargate is created via a CloudFormation template. This template can be found in the `sceptre/` directory. See the [sceptre documentation](https://docs.sceptre-project.org/latest/) for information on how to install and use sceptre.
 
 To create/update the infrastructure:
 
