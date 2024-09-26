@@ -1,0 +1,313 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Nuxeo Merritt ATOM feed CodeBuild project and ECS task
+Parameters:
+  SourceVersion:
+    Description: The git branch name on which to base the docker builds
+    Type: String
+  EcrRepo:
+    Description: ECR repo name
+    Type: String
+  ApplicationS3Bucket:
+    Description: S3 bucket in which metadata and reports will be stored
+    Type: String
+  DagsS3Bucket:
+    Description: S3 bucket in which DAGs are stored
+    Type: String
+  RegistryUrl:
+    Description: UCLDC Registry URL
+    Type: String
+  NuxeoToken:
+    Type: String
+  NuxeoApiEndpoint:
+    Type: String
+  MetadataUri:
+    Type: String
+  MediaJsonUri:
+    Type: String
+  AtomFeedsUri:
+    Type: String
+Resources:
+  #################################
+  ## CodeBuild Role & Policy
+  #################################
+  NuxeoMerrittCodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "nuxeo_merritt-codebuild-role"
+      Path: "/service-role/"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ codebuild.amazonaws.com ]
+            Action: [ "sts:AssumeRole" ]
+  NuxeoMerrittCodeBuildPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: nuxeo_merritt-codebuild-policy
+      Roles: [ !Ref NuxeoMerrittCodeBuildRole ]
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: CodeBuildLogsAccess
+            Effect: Allow
+            Action: 
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource:
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:nuxeo_merritt
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:nuxeo_merritt:*
+          - Sid: ECRAccess
+            Effect: Allow
+            Action:
+              - ecr-public:GetAuthorizationToken
+              - ecr-public:InitiateLayerUpload
+              - ecr-public:UploadLayerPart
+              - ecr-public:BatchCheckLayerAvailability
+              - ecr-public:CompleteLayerUpload
+              - ecr-public:PutImage
+              - sts:GetServiceBearerToken
+            Resource: 
+              - "*"
+          - Sid: S3Access
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetObject
+              - s3:PutObject
+              - s3:GetObjectAcl
+              - s3:GetObjectVersion
+              - s3:DeleteObject
+            Resource:
+              - !Sub arn:aws:s3:::${DagsS3Bucket}
+              - !Sub arn:aws:s3:::${DagsS3Bucket}/*
+  #######################################################################
+  ## CodeBuild Project - build nuxeo_merritt Docker image and push to ECR
+  #######################################################################
+  NuxeoMerrittApplicationCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: nuxeo_merritt-application-deploy
+      Description: Build nuxeo merritt ATOM feed docker image and push to ECR
+      ServiceRole: !GetAtt NuxeoMerrittCodeBuildRole.Arn
+      SourceVersion: !Ref SourceVersion
+      Source:
+        Type: GITHUB
+        Location: https://github.com/ucldc/nuxeo_merritt.git
+        # Auth:
+        #   Type: OAUTH
+        GitCloneDepth: 1
+        # For >- and newline handling docs see: https://yaml-multiline.info/
+        BuildSpec: !Sub >-
+          version: 0.2
+
+          phases:
+            build:
+              commands:
+                # login to ECR public
+                - aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+                - docker build -f Dockerfile -t ${EcrRepo} .
+                - docker tag ${EcrRepo}:latest public.ecr.aws/b6c7x7s4/${EcrRepo}:latest
+                - docker push public.ecr.aws/b6c7x7s4/${EcrRepo}:latest
+      Triggers:
+        BuildType: BUILD
+        Webhook: True
+        FilterGroups:
+          - - Type: EVENT
+              Pattern: PUSH,PULL_REQUEST_MERGED
+            - Type: HEAD_REF
+              Pattern: ^refs/heads/main$
+              ExcludeMatchedPattern: false
+      Environment:
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        PrivilegedMode: true
+      Artifacts:
+        Type: NO_ARTIFACTS
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: nuxeo_merritt
+          Status: ENABLED
+          StreamName: build
+  #######################################################################
+  ## CodeBuild Project - deploy nuxeo_merritt DAGS
+  #######################################################################
+  NuxeoMerrittDagsCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: nuxeo_merritt-dags-deploy
+      Description: Deploy nuxeo_merritt Airflow DAGS
+      ServiceRole: !GetAtt NuxeoMerrittCodeBuildRole.Arn
+      SourceVersion: !Ref SourceVersion
+      Source:
+        Type: GITHUB
+        Location: https://github.com/ucldc/nuxeo_merritt.git
+        # Auth:
+        #   Type: OAUTH
+        GitCloneDepth: 1
+        # For >- and newline handling docs see: https://yaml-multiline.info/
+        BuildSpec: !Sub >-
+          version: 0.2
+
+          phases:
+            build:
+              commands:
+                - aws s3 sync --exclude="*" --include="*.py" --delete . s3://pad-airflow/dags/nuxeo_merritt/
+      Triggers:
+        BuildType: BUILD
+        Webhook: True
+        FilterGroups:
+          - - Type: EVENT
+              Pattern: PUSH,PULL_REQUEST_MERGED
+            - Type: HEAD_REF
+              Pattern: ^refs/heads/main$
+              ExcludeMatchedPattern: false
+      Environment:
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        PrivilegedMode: true
+      Artifacts:
+        Type: NO_ARTIFACTS
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: nuxeo_merritt
+          Status: ENABLED
+          StreamName: build
+  #################################
+  ## ECS Execution Role & Policy
+  #################################
+  NuxeoMerrittECSExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: nuxeo_merritt-ecs-execution-role
+      Path: "/service-role/"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ ecs-tasks.amazonaws.com ]
+            Action: [ "sts:AssumeRole" ]
+  NuxeoMerrittECSExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: nuxeo_merritt-ecs-execution-policy
+      Path: "/"
+      Roles: [ !Ref NuxeoMerrittECSExecutionRole ]
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: EcrAccess
+            Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+              - ecr:BatchCheckLayerAvailability
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+            Resource: "*"
+          - Sid: LoggingAccess
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: "*"
+  ###################################
+  ## ECS Task Role
+  ###################################
+  NuxeoMerrittTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: nuxeo_merritt-task-role
+      Path: "/service-role/"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ ecs-tasks.amazonaws.com ]
+            Action: [ "sts:AssumeRole" ]
+            Condition:
+              ArnLike:
+                aws:SourceArn:
+                  - !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:*"
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  ###############################################
+  ## ECS Task Policy
+  ###############################################
+  NuxeoMerrittTaskPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: nuxeo_merritt-task-policy
+      Path: "/"
+      Roles:
+        - !Ref NuxeoMerrittTaskRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: LogsAccess
+            Effect: Allow
+            Action: 
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: "*"
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetObject
+              - s3:PutObject
+              - s3:GetObjectAcl
+              - s3:GetObjectVersion
+            Resource: 
+              - !Sub arn:aws:s3:::${ApplicationS3Bucket}
+              - !Sub arn:aws:s3:::${ApplicationS3Bucket}/*
+  ###############################
+  # ECS Task Definition
+  ###############################
+  NuxeoMerrittTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: nuxeo_merritt-task-definition
+      RequiresCompatibilities: 
+        - FARGATE
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      Cpu: 2 vCPU
+      Memory: 4096
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !GetAtt NuxeoMerrittECSExecutionRole.Arn
+      TaskRoleArn: !GetAtt NuxeoMerrittTaskRole.Arn
+      ContainerDefinitions:
+        - Name: nuxeo_merritt
+          Image: !Sub public.ecr.aws/b6c7x7s4/${EcrRepo}
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-group: nuxeo_merritt
+              awslogs-region: us-west-2
+              awslogs-stream-prefix: ecs
+          Essential: true
+          Environment:
+            - Name: NUXEO_MERRITT_METADATA
+              Value: !Ref MetadataUri
+            - Name: NUXEO_MERRITT_MEDIA_JSON
+              Value: !Ref MediaJsonUri
+            - Name: NUXEO_MERRITT_FEEDS
+              Value: !Ref AtomFeedsUri
+            - Name: NUXEO_MERRITT_NUXEO_TOKEN
+              Value: !Ref NuxeoToken
+            - Name: NUXEO_MERRITT_NUXEO_API
+              Value: !Ref NuxeoApiEndpoint
+          LinuxParameters:
+            InitProcessEnabled: true
