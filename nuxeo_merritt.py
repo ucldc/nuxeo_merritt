@@ -104,7 +104,7 @@ def store_media_json(collection_id, media_json: dict):
     elif storage.store == 's3':
         s3_key = f"{media_json_path.lstrip('/')}/{filename}"
         load_object_to_s3(storage.bucket, s3_key, content)
-        return f"https://s3.amazonaws.com/{storage.bucket}/{s3_key}"
+        return f"https://{storage.bucket}.s3.us-west-2.amazonaws.com/{s3_key}"
     else:
         raise Exception(f"Unknown data scheme: {storage.store}")
 
@@ -563,7 +563,7 @@ def create_atom_feed(version, collection):
 
     # paging info. this is just dumb for now.
     storage = parse_data_uri(FEED_STORE)
-    s3_url = f"https://s3.amazonaws.com/{storage.bucket}{storage.path}/{feed_filename}"
+    s3_url = f"https://{storage.bucket}.s3.us-west-2.amazonaws.com{storage.path}/{feed_filename}"
     last_link = etree.Element(etree.QName(atom_namespace, "link"), rel="last", href=s3_url)
     root.insert(0, last_link)
     first_link = etree.Element(etree.QName(atom_namespace, "link"), rel="first", href=s3_url)
