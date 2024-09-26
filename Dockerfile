@@ -1,4 +1,4 @@
-FROM public.ecr.aws/docker/library/python:3.9.19
+FROM public.ecr.aws/docker/library/python:3.11
 
 WORKDIR /nuxeo_merritt
 
