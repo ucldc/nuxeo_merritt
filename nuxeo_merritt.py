@@ -824,7 +824,7 @@ def main(params):
                 fetcher.fetch()
             else:
                 # If feed doesn't exist, create it using latest fetched metadata
-                if get_stored_feed_uri(collection):
+                if get_stored_feed_uri(collection['collection_id']):
                     collection['feed_needs_update'] = False
                 else:
                     collection['feed_needs_update'] = True
