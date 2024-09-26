@@ -25,9 +25,11 @@ When new code is pushed/merged into the main branch of this repo on github, 2 Co
 
 These CodeBuild projects are defined in the `sceptre/templates/fargate.yaml` CloudFormation template.
 
+It's a good idea to check that both deployments have succeeded after merging a PR into main, as both should be on the same version of the code.
+
 ## Local Development
 
-Create a python virtual environment. Currently this code is run in a python 3.9 Docker container because this is the highest version image that the ECR public repo provides.
+Create a python virtual environment. Currently this code is run in a python 3.11 Docker container.
 
 Create an `env.local` file and source it. You can copy `env.local.example` and update the values as needed. (As noted in comments, some of the env vars are only necessary when running in mwaa local-runner.) Source this file.
 
