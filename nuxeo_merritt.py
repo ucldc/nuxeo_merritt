@@ -239,7 +239,7 @@ def delete_old_metadata(collection_id):
                     print(f"Deleted s3://{data.bucket}/{prefix} ({len(response['Deleted'])} objects total)")
                 if "Errors" in response:
                     raise Exception(
-                        f"Error deleting objects with prefix {prefix} from bucket {data.bucket}"
+                        f"Error deleting objects with prefix `{prefix}` from bucket `{data.bucket}`\n"
                         f"Errors: {response['Errors']}"
                     )
 
