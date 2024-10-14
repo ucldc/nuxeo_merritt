@@ -267,6 +267,7 @@ Resources:
               - s3:PutObject
               - s3:GetObjectAcl
               - s3:GetObjectVersion
+              - s3:DeleteObject
             Resource: 
               - !Sub arn:aws:s3:::${ApplicationS3Bucket}
               - !Sub arn:aws:s3:::${ApplicationS3Bucket}/*
