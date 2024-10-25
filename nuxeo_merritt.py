@@ -441,7 +441,9 @@ def get_latest_metadata_version(collection):
 
 def metadata_needs_update(collection):
     latest_metadata_version = get_latest_metadata_version(collection)
+    #print(f"Latest ATOM feed version: {latest_metadata_version}")
     latest_nuxeo_update = get_nuxeo_collection_latest_update_date(collection)
+    #print(f"Latest Nuxeo update:      {latest_nuxeo_update}")
 
     if not latest_metadata_version:
         return True
@@ -451,6 +453,7 @@ def metadata_needs_update(collection):
         return False
 
 def get_nuxeo_collection_latest_update_date(collection):
+    # the ORDER BY clause doesn't work
     query = (
             "SELECT * FROM SampleCustomPicture, CustomFile, CustomVideo, CustomAudio, CustomThreeD "
             f"WHERE ecm:ancestorId = '{collection['uid']}' AND "
@@ -463,8 +466,6 @@ def get_nuxeo_collection_latest_update_date(collection):
         'url': f"{NUXEO_API.rstrip('/')}/search/lang/NXQL/execute",
         'headers': nuxeo_request_headers,
         'params': {
-            'pageSize': '1',
-            'currentPageIndex': 0,
             'query': query
         }
     }
@@ -476,10 +477,11 @@ def get_nuxeo_collection_latest_update_date(collection):
         print(f"{collection:<6}: error querying Nuxeo: {request}")
         raise(e)
 
-    documents = [doc for doc in response.json().get('entries', [])]
-    last_modified = documents[0]['lastModified']
+    # the ORDER BY clause on the query doesn't work, so we have to sort ourselves
+    last_modified_dates = [doc['lastModified'] for doc in response.json().get('entries', [])]
+    last_modified_dates.sort()
 
-    return last_modified
+    return last_modified_dates[-1]
 
 def get_registry_merritt_collections():
     url = f'{REGISTRY_BASE_URL}/api/v1/collection/?harvest_type=NUX&format=json'
