@@ -478,6 +478,9 @@ def get_nuxeo_collection_latest_update_date(collection):
         raise(e)
 
     # the ORDER BY clause on the query doesn't work, so we have to sort ourselves
+    # FIXME: this is only getting the first page of results, so won't work for collections with > 100 records
+    # Since we'd have to get all of the metadata to determine the lastModified date, we may as
+    # well just recreate all of the feeds while we're at it.
     last_modified_dates = [doc['lastModified'] for doc in response.json().get('entries', [])]
     last_modified_dates.sort()
 
@@ -808,29 +811,42 @@ def main(params):
         version = version.replace(tzinfo=datetime.timezone.utc)
         version = version.isoformat()
         for collection in collections:
+            ## NOTE: we are just updating all of the feeds every week because the Nuxeo API
+            ## is broken and we can't do a query that's ordered by lastModified
+            collection['feed_needs_update'] = True
             collection['uid'] = get_nuxeo_uid_for_path(collection['nuxeo_path'])
+            print(f"{collection['collection_id']}: fetching metadata from Nuxeo at path {collection['nuxeo_path']}")
+            fetcher_payload = {
+                "collection_id": collection['collection_id'],
+                "path": collection['nuxeo_path'],
+                "uid": collection['uid'],
+                "version": version
+            }
+            fetcher = NuxeoMetadataFetcher(fetcher_payload)
+            fetcher.fetch()
+
             # check to see if any records have been added or updated 
             # since metadata was last fetched
-            collection['metadata_needs_update'] = metadata_needs_update(collection)
-            if collection['metadata_needs_update']:
-                collection['feed_needs_update'] = True
-                # fetch fresh metadata from Nuxeo
-                print(f"{collection['collection_id']}: fetching metadata from Nuxeo at path {collection['nuxeo_path']}")
-                fetcher_payload = {
-                    "collection_id": collection['collection_id'],
-                    "path": collection['nuxeo_path'],
-                    "uid": collection['uid'],
-                    "version": version
-                }
-                fetcher = NuxeoMetadataFetcher(fetcher_payload)
-                fetcher.fetch()
-            else:
-                # If feed doesn't exist, create it using latest fetched metadata
-                if get_stored_feed_uri(collection['collection_id']):
-                    collection['feed_needs_update'] = False
-                else:
-                    collection['feed_needs_update'] = True
-                    version = get_latest_metadata_version(collection)
+            # collection['metadata_needs_update'] = metadata_needs_update(collection)
+            # if collection['metadata_needs_update']:
+            #     collection['feed_needs_update'] = True
+            #     # fetch fresh metadata from Nuxeo
+            #     print(f"{collection['collection_id']}: fetching metadata from Nuxeo at path {collection['nuxeo_path']}")
+            #     fetcher_payload = {
+            #         "collection_id": collection['collection_id'],
+            #         "path": collection['nuxeo_path'],
+            #         "uid": collection['uid'],
+            #         "version": version
+            #     }
+            #     fetcher = NuxeoMetadataFetcher(fetcher_payload)
+            #     fetcher.fetch()
+            # else:
+            #     # If feed doesn't exist, create it using latest fetched metadata
+            #     if get_stored_feed_uri(collection['collection_id']):
+            #         collection['feed_needs_update'] = False
+            #     else:
+            #         collection['feed_needs_update'] = True
+            #         version = get_latest_metadata_version(collection)
 
     for collection in collections:
         if collection['feed_needs_update']:
