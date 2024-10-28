@@ -231,17 +231,20 @@ def delete_old_metadata(collection_id):
                     Prefix=prefix
                 )
                 keys_to_delete = [item['Key'] for page in pages for item in page['Contents']]
-                response = s3_client.delete_objects(
-                    Bucket=data.bucket,
-                    Delete={"Objects": [{"Key": key} for key in keys_to_delete]}
-                )
-                if "Deleted" in response:
-                    print(f"Deleted s3://{data.bucket}/{prefix} ({len(response['Deleted'])} objects total)")
-                if "Errors" in response:
-                    raise Exception(
-                        f"Error deleting objects with prefix `{prefix}` from bucket `{data.bucket}`\n"
-                        f"Errors: {response['Errors']}"
+                chunk_size = 1000
+                while keys_to_delete:
+                    chunk, keys_to_delete = keys_to_delete[:chunk_size], keys_to_delete[chunk_size:]
+                    response = s3_client.delete_objects(
+                        Bucket=data.bucket,
+                        Delete={"Objects": [{"Key": key} for key in chunk]}
                     )
+                    if "Deleted" in response:
+                        print(f"Deleted s3://{data.bucket}/{prefix} ({len(response['Deleted'])} objects total)")
+                    if "Errors" in response:
+                        raise Exception(
+                            f"Error deleting objects with prefix `{prefix}` from bucket `{data.bucket}`\n"
+                            f"Errors: {response['Errors']}"
+                        )
 
 class NuxeoMetadataFetcher(object):
     def __init__(self, params):
