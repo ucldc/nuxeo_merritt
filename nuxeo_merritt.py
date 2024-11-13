@@ -9,6 +9,7 @@ import sys
 from urllib.parse import quote, urlparse
 
 import requests
+from requests.adapters import HTTPAdapter, Retry
 
 import boto3
 from lxml import etree
@@ -31,6 +32,19 @@ nuxeo_request_headers = {
 DataStorage = namedtuple(
     "DateStorage", "uri, store, bucket, path"
 )
+
+def configure_http_session() -> requests.Session:
+    http = requests.Session()
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=2,
+        status_forcelist=[413, 429, 500, 502, 503, 504]
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    http.mount("https://", adapter)
+    http.mount("http://", adapter)
+    return http
+http_session = configure_http_session()
 
 def parse_data_uri(data_uri: str):
     data_loc = urlparse(data_uri)
@@ -256,6 +270,7 @@ class NuxeoMetadataFetcher(object):
         self.version = params.get('version')
         self.page_size = 100
         self.fetch_children = True
+        self.http_session = configure_http_session()
 
     def fetch(self):
         page_prefix = ['r']
@@ -307,7 +322,7 @@ class NuxeoMetadataFetcher(object):
         }
 
         try:
-            response = requests.get(**request)
+            response = self.http_session.get(**request)
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
             print(f"{self.collection_id:<6}: unable to fetch page {request}")
@@ -354,7 +369,7 @@ class NuxeoMetadataFetcher(object):
         }
 
         try:
-            response = requests.get(**request)
+            response = self.http_session.get(**request)
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
             print(f"{self.collection_id:<6}: unable to fetch page {request}")
@@ -398,7 +413,7 @@ class NuxeoMetadataFetcher(object):
         }
         
         try:
-            response = requests.get(**request)
+            response = self.http_session.get(**request)
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
             print(f"{self.collection_id:<6}: unable to fetch components: {request}")
@@ -474,7 +489,7 @@ def get_nuxeo_collection_latest_update_date(collection):
     }
 
     try:
-        response = requests.get(**request)
+        response = http_session.get(**request)
         response.raise_for_status()
     except requests.exceptions.HTTPError as e:
         print(f"{collection:<6}: error querying Nuxeo: {request}")
@@ -494,7 +509,7 @@ def get_registry_merritt_collections():
 
     merritt_collections = []
     while True:
-        response = requests.get(url)
+        response = http_session.get(url)
         response.raise_for_status()
         response = response.json()
         for collection in response['objects']:
@@ -511,7 +526,7 @@ def get_registry_merritt_collections():
 
 def get_registry_collection(collection_id):
     url = f'{REGISTRY_BASE_URL}/api/v1/collection/{collection_id}'
-    response = requests.get(url)
+    response = http_session.get(url)
     response.raise_for_status()
     response = response.json()
     if response['merritt_extra_data'] and response['merritt_id']:
@@ -537,7 +552,7 @@ def get_nuxeo_uid_for_path(path):
     url = u'/'.join([NUXEO_API, "path", escaped_path.strip('/')])
     headers = nuxeo_request_headers
     request = {'url': url, 'headers': headers}
-    response = requests.get(**request)
+    response = http_session.get(**request)
     response.raise_for_status()
     return response.json()['uid']
 
