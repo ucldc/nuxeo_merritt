@@ -6,7 +6,7 @@ The feed creation job is launched weekly by Airflow, which runs each feed creati
 
 ## Basic Layout
 
-**nuxeo_merritt.py** - script that generates ATOM feeds for each collection configured in the [Registry](https://registry.cdlib.org/) for Merritt deposit. The script will only update the feed if there have been updates to the collection in Nuxeo since the last run.
+**nuxeo_merritt.py** - script that generates ATOM feeds for each collection configured in the [Registry](https://registry.cdlib.org/) for Merritt deposit.
 
 **run_nuxeo_merritt_task.py** - script for running `nuxeo_merritt.py` in Fargate (ECS).
 
