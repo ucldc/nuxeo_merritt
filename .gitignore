@@ -11,3 +11,5 @@ env.local
 env.docker
 startup.sh
 .DS_Store
+example-vars.yaml
+sceptre/vars.yaml
