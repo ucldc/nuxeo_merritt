@@ -309,6 +309,7 @@ class NuxeoMetadataFetcher(object):
             f"WHERE ecm:ancestorId = '{folder['uid']}' "
             "AND ecm:isVersion = 0 "
             "AND ecm:isTrashed = 0"
+            "ORDER BY ecm:uuid"
         )
 
         request = {
@@ -355,7 +356,7 @@ class NuxeoMetadataFetcher(object):
             "SELECT * FROM SampleCustomPicture, CustomFile, CustomVideo, CustomAudio, CustomThreeD "
             f"WHERE ecm:parentId = '{folder['uid']}' AND "
             "ecm:isVersion = 0 AND "
-            "ecm:isTrashed = 0 ORDER BY ecm:name"
+            "ecm:isTrashed = 0 ORDER BY ecm:name, ecm:uuid"
         )
 
         request = {
@@ -399,7 +400,7 @@ class NuxeoMetadataFetcher(object):
             f"WHERE ecm:ancestorId = '{record['uid']}' AND "
             "ecm:isVersion = 0 AND "
             "ecm:isTrashed = 0 "
-            "ORDER BY ecm:pos"
+            "ORDER BY ecm:pos, ecm:uuid"
         )
 
         request = {
@@ -477,7 +478,7 @@ def get_nuxeo_collection_latest_update_date(collection):
             f"WHERE ecm:ancestorId = '{collection['uid']}' AND "
             "ecm:isVersion = 0 AND "
             "ecm:isTrashed = 0 "
-            "ORDER BY lastModified desc"
+            "ORDER BY lastModified, desc, ecm:uuid"
         )
 
     request = {
