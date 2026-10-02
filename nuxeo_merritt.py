@@ -509,8 +509,8 @@ def get_registry_merritt_collections():
         f"{REGISTRY_BASE_URL}/api/v1/collection"
             "?harvest_type=NUX"
             "&format=json"
-            f"&username={os.environ['REGISTRY_USER']}"
-            f"&api_key={os.environ['REGISTRY_API_KEY']}"
+            f"&username={os.environ['NUXEO_MERRITT_REGISTRY_USER']}"
+            f"&api_key={os.environ['NUXEO_MERRITT_REGISTRY_API_KEY']}"
     )
     merritt_collections = []
     while True:
@@ -532,8 +532,8 @@ def get_registry_merritt_collections():
 def get_registry_collection(collection_id):
     url = (
         f'{REGISTRY_BASE_URL}/api/v1/collection/{collection_id}'
-        f"&username={os.environ['REGISTRY_USER']}"
-        f"&api_key={os.environ['REGISTRY_API_KEY']}"
+        f"&username={os.environ['NUXEO_MERRITT_REGISTRY_USER']}"
+        f"&api_key={os.environ['NUXEO_MERRITT_REGISTRY_API_KEY']}"
     )
     response = http_session.get(url)
     response.raise_for_status()
