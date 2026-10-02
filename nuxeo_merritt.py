@@ -505,8 +505,13 @@ def get_nuxeo_collection_latest_update_date(collection):
     return last_modified_dates[-1]
 
 def get_registry_merritt_collections():
-    url = f'{REGISTRY_BASE_URL}/api/v1/collection/?harvest_type=NUX&format=json'
-
+    url = (
+        f"{REGISTRY_BASE_URL}/api/v1/collection"
+            "?harvest_type=NUX"
+            "&format=json"
+            f"&username={os.environ['NUXEO_MERRITT_REGISTRY_USER']}"
+            f"&api_key={os.environ['NUXEO_MERRITT_REGISTRY_API_KEY']}"
+    )
     merritt_collections = []
     while True:
         response = http_session.get(url)
@@ -525,7 +530,11 @@ def get_registry_merritt_collections():
     return merritt_collections
 
 def get_registry_collection(collection_id):
-    url = f'{REGISTRY_BASE_URL}/api/v1/collection/{collection_id}'
+    url = (
+        f'{REGISTRY_BASE_URL}/api/v1/collection/{collection_id}'
+        f"?username={os.environ['NUXEO_MERRITT_REGISTRY_USER']}"
+        f"&api_key={os.environ['NUXEO_MERRITT_REGISTRY_API_KEY']}"
+    )
     response = http_session.get(url)
     response.raise_for_status()
     response = response.json()

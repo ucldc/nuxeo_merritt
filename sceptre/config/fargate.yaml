@@ -1,14 +1,18 @@
 template:
-  path: fargate.yaml
+  path: fargate.yaml.j2
   type: file
 parameters:
   SourceVersion: main
   EcrRepo: nuxeo/nuxeo_merritt
   ApplicationS3Bucket: pad-nuxeo
   DagsS3Bucket: pad-airflow
-  RegistryUrl: https://registry.cdlib.org
-  NuxeoToken: !environment_variable NUXEO_MERRITT_NUXEO_TOKEN
-  NuxeoApiEndpoint: !environment_variable NUXEO_MERRITT_NUXEO_API
-  MetadataUri: s3://pad-nuxeo/nuxeo_merritt/metadata
-  MediaJsonUri: s3://pad-nuxeo/nuxeo_merritt/media_json
-  AtomFeedsUri: s3://pad-nuxeo/nuxeo_merritt/atom_feeds
+
+sceptre_user_data:
+  ContainerEnvironment:
+    - NUXEO_MERRITT_METADATA: {{ var.NUXEO_MERRITT_METADATA }}
+    - NUXEO_MERRITT_MEDIA_JSON: {{ var.NUXEO_MERRITT_MEDIA_JSON }}
+    - NUXEO_MERRITT_FEEDS: {{ var.NUXEO_MERRITT_FEEDS }}
+    - NUXEO_MERRITT_NUXEO_TOKEN: {{ var.NUXEO_MERRITT_NUXEO_TOKEN }}
+    - NUXEO_MERRITT_NUXEO_API: {{ var.NUXEO_MERRITT_NUXEO_API }}
+    - NUXEO_MERRITT_REGISTRY_USER: {{ var.NUXEO_MERRITT_REGISTRY_USER }}
+    - NUXEO_MERRITT_REGISTRY_API_KEY: {{ var.NUXEO_MERRITT_REGISTRY_API_KEY }}
