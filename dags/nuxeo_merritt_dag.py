@@ -46,9 +46,9 @@ def get_dag_run(context: dict):
 
 def notify_nuxeo_merritt_failure(context: dict):
     exception = context['exception']
-    tb_as_str_list = traceback.format_exception(
-        type(exception), exception, exception.__traceback__)
-    traceback_str = ''.join(tb_as_str_list)
+    # tb_as_str_list = traceback.format_exception(
+    #     type(exception), exception, exception.__traceback__)
+    # traceback_str = ''.join(tb_as_str_list)
     exc_as_str_list = traceback.format_exception_only(
         type(exception), exception)
     exception_str = '\n'.join(exc_as_str_list)
@@ -59,7 +59,7 @@ def notify_nuxeo_merritt_failure(context: dict):
         f"*Airflow DAG Run*: {dag_run['dag_run_permalink']}\n"
         f"*Airflow Task Run*: {dag_run['task_run_permalink']}\n"
         f"*Exception*: {exception_str}\n"
-        f"*Traceback*: {traceback_str}\n"
+        # f"*Traceback*: {traceback_str}\n"
     )
 
     send_message_to_slack(context, message)
