@@ -21,6 +21,30 @@ METADATA_STORE = os.environ.get('NUXEO_MERRITT_METADATA')
 MEDIA_JSON_STORE = os.environ.get('NUXEO_MERRITT_MEDIA_JSON')
 FEED_STORE = os.environ.get('NUXEO_MERRITT_FEEDS')
 
+# get registry auth from either from airflow variable or from env vars
+try:
+    from airflow.models import Variable
+    AIRFLOW_AVAILABLE = True
+except ImportError:
+    AIRFLOW_AVAILABLE = False
+
+REGISTRY_AUTH: dict = {}
+if AIRFLOW_AVAILABLE:
+    REGISTRY_AUTH = Variable.get(
+        "nuxeo_merritt_registry_auth", deserialize_json=True, default_var={}
+    )
+else:
+    REGISTRY_AUTH = {
+        "username": os.environ.get('NUXEO_MERRITT_REGISTRY_USER', ''),
+        "api_key": os.environ.get('NUXEO_MERRITT_REGISTRY_API_KEY', '')
+    }
+
+if (
+    set(REGISTRY_AUTH.keys()) != {'username', 'api_key'} or
+    not all(REGISTRY_AUTH.values())
+):
+    REGISTRY_AUTH = {}
+
 nuxeo_request_headers = {
     "Accept": "application/json",
     "Content-Type": "application/json",
@@ -510,8 +534,8 @@ def get_registry_merritt_collections():
         f"{REGISTRY_BASE_URL}/api/v1/collection"
             "?harvest_type=NUX"
             "&format=json"
-            f"&username={os.environ['NUXEO_MERRITT_REGISTRY_USER']}"
-            f"&api_key={os.environ['NUXEO_MERRITT_REGISTRY_API_KEY']}"
+            f"&username={REGISTRY_AUTH['username']}"
+            f"&api_key={REGISTRY_AUTH['api_key']}"
     )
     merritt_collections = []
     while True:
@@ -533,8 +557,8 @@ def get_registry_merritt_collections():
 def get_registry_collection(collection_id):
     url = (
         f'{REGISTRY_BASE_URL}/api/v1/collection/{collection_id}'
-        f"?username={os.environ['NUXEO_MERRITT_REGISTRY_USER']}"
-        f"&api_key={os.environ['NUXEO_MERRITT_REGISTRY_API_KEY']}"
+        f"?username={REGISTRY_AUTH['username']}"
+        f"&api_key={REGISTRY_AUTH['api_key']}"
     )
     response = http_session.get(url)
     response.raise_for_status()
